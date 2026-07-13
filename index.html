@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html class="dark" lang="ko">
 <head>
 <meta charset="utf-8"/>
@@ -10,6 +10,7 @@
 <!-- webgpu 포함 번들 필수: 기본 ort.min.js는 webgpu 백엔드가 없어 조용히 WASM 강등됨 (헤드리스 디버깅으로 발견) -->
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.webgpu.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="libar_rec.js"></script><!-- 인식 로직 (match·LIS·줄분할·CTC) — node 골든 테스트와 공유 -->
 <style>
   @keyframes pulse-glow { 0%{box-shadow:0 0 0 0 rgba(75,226,119,.4)} 70%{box-shadow:0 0 0 10px rgba(75,226,119,0)} 100%{box-shadow:0 0 0 0 rgba(75,226,119,0)} }
   .material-symbols-outlined { font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24; }
@@ -128,13 +129,13 @@ tailwind.config = { darkMode:"class", theme:{ extend:{
     </div>
   </header>
 
-  <!-- 부가 기능 (시트 위 우하단): 사진 업로드 + 판정 시연 -->
+  <!-- 부가 기능 (시트 위 우하단): 사진 업로드 + 샘플 사진 -->
   <div class="fixed right-3 z-40 flex flex-col items-end gap-1.5" style="bottom:130px; pointer-events:auto">
     <label class="bg-surface-container/85 backdrop-blur border border-outline-variant rounded-lg px-3 py-2 text-xs font-bold cursor-pointer">
       🖼 사진 업로드<input type="file" accept="image/*" id="file" class="hidden"></label>
     <div class="flex gap-1.5 text-[10px]">
-      <button onclick="loadDemo(1)" class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-on-surface-variant">판정 시연·광각</button>
-      <button onclick="loadDemo(2)" class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-on-surface-variant">판정 시연·각도</button>
+      <button onclick="loadDemo(1)" class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-on-surface-variant">샘플 서가·광각</button>
+      <button onclick="loadDemo(2)" class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-on-surface-variant">샘플 서가·각도</button>
     </div>
     <button onclick="exportCrops()" id="btn-crops"
             class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-[10px] text-on-surface-variant">📦 학습용 조각 제공 (동의)</button>
@@ -187,8 +188,8 @@ let sess = null, lastRows = null, lastImg = null, lastMs = 0, expanded = false;
 
 function show(v) { document.querySelectorAll('.view').forEach(e => e.classList.remove('active'));
   document.getElementById('view-' + v).classList.add('active'); }
-// 서가 점검·길안내에서 진입 시 카메라 자동 시작 (사진 업로드·판정 시연은 부가 기능)
-function enterScan() { show('scan'); if (!live) toggleLive(); }
+// 서가 점검·길안내에서 진입 시 카메라 자동 시작 (사진 업로드·샘플 서가는 부가 기능)
+function enterScan() { show('scan'); ensureRec(); if (!live) toggleLive(); }
 
 // 바텀시트 접기/펼치기
 const sheet = document.getElementById('sheet');
@@ -202,8 +203,9 @@ sheet.addEventListener('touchend', e => { if (ty0 === null) return;
   if (dy < -40) setSheet(true); else if (dy > 40) setSheet(false); });
 
 let backend = '-';
-(async () => {
-  const tries = navigator.gpu ? [['webgpu','wasm'], ['wasm']] : [['wasm']];
+const noGpu = location.hash.includes('wasm');          // #...wasm — WASM 폴백 강제 (테스트용)
+const sessReady = (async () => {           // 프로미스 노출 — 자동 테스트가 폴링 대신 await
+  const tries = (navigator.gpu && !noGpu) ? [['webgpu','wasm'], ['wasm']] : [['wasm']];
   for (const eps of tries) {
     try {
       sess = await ort.InferenceSession.create('model/best.onnx', { executionProviders: eps });
@@ -214,6 +216,158 @@ let backend = '-';
   }
   document.getElementById('home-backend').textContent = '모델 로드 실패';
 })();
+
+// ── 온디바이스 인식 모델 (rec_v4 fp16, 48MB) — 필요 시점에 내려받아 세션 생성 ──
+let recSess = null, detSess = null, recChars = null, recIdx = null, recReady = null, recBackend = '-';
+let recMsgCb = null, lastRecMs = 0, lastRecN = 0;
+let _catRaw = null;
+async function loadCatalogRaw() { return _catRaw ??= await (await fetch('demo/catalog.json')).json(); }
+async function ensureRec(onMsg) {
+  if (onMsg) recMsgCb = onMsg;                          // 진행 메시지는 최신 호출자에게
+  const say = m => recMsgCb?.(m);
+  recReady ??= (async () => {
+    try {
+      say('인식 준비 중…');
+      const [chars, cat] = await Promise.all([
+        (await fetch('rec_charset.json')).json(), loadCatalogRaw()]);
+      recChars = chars; recIdx = prepCatalog(cat);
+      const resp = await fetch('rec_v4_fp16.onnx');     // 직접 fetch — 48MB 다운로드 진행률 표시
+      if (!resp.ok) throw new Error('rec 모델 ' + resp.status);
+      const total = +resp.headers.get('Content-Length') || 0;
+      let buf;
+      if (resp.body && total) {
+        const rd = resp.body.getReader(), chunks = []; let got = 0;
+        while (true) { const { done, value } = await rd.read(); if (done) break;
+          chunks.push(value); got += value.length;
+          say(`인식 모델 내려받는 중… ${(got/1048576).toFixed(0)}/${(total/1048576).toFixed(0)}MB`); }
+        buf = new Uint8Array(got); let o = 0;
+        for (const ch of chunks) { buf.set(ch, o); o += ch.length; }
+      } else buf = new Uint8Array(await resp.arrayBuffer());
+      const dresp = await fetch('det_mobile.onnx');     // 텍스트 줄 검출 (DB, 4.5MB)
+      if (!dresp.ok) throw new Error('det 모델 ' + dresp.status);
+      const dbuf = new Uint8Array(await dresp.arrayBuffer());
+      const tries = (navigator.gpu && !noGpu) ? [['webgpu','wasm'], ['wasm']] : [['wasm']];
+      for (const eps of tries) {
+        try {  // fp16 모델은 'all' 최적화가 LayerNorm 퓨전 버그로 초기화 실패 → basic (데스크톱 ORT 실측)
+          recSess = await ort.InferenceSession.create(buf, { executionProviders: eps, graphOptimizationLevel: 'basic' });
+          detSess = await ort.InferenceSession.create(dbuf, { executionProviders: eps });
+          recBackend = eps[0] === 'webgpu' ? 'WebGPU' : 'WASM';
+          return true;
+        } catch(e) { console.error('rec init 실패', eps, e); }
+      }
+    } catch(e) { console.error('rec 준비 실패', e); }
+    return false;
+  })();
+  return recReady;
+}
+
+// ── 온디바이스 인식 (파이프라인 스트립 구조 이식): 밴드 스트립 → ×3 업스케일 → 1280 청크
+//    → det(DB)로 텍스트 줄 검출 → rec → 토큰 x배정 + 클러스터 채널 → 1,860권 대조 → LIS 판정 ──
+async function recLine(cnv, sx, sy, sw, sh) {
+  const tw = Math.min(320, Math.max(8, Math.ceil(48 * sw / sh)));
+  const rc = new OffscreenCanvas(320, 48), rg = rc.getContext('2d', { willReadFrequently: true });
+  rg.drawImage(cnv, sx, sy, sw, sh, 0, 0, tw, 48);
+  const px = rg.getImageData(0, 0, 320, 48).data;
+  const x = new Float32Array(3 * 48 * 320);            // 우측 패딩 = 0 (정규화 공간, 파이썬 전처리와 동일)
+  for (let yy = 0; yy < 48; yy++) for (let xx = 0; xx < tw; xx++) {
+    const pi = (yy * 320 + xx) * 4, ti = yy * 320 + xx;
+    x[ti]            = px[pi + 2] / 127.5 - 1;         // BGR 채널 순서 — Paddle 학습 규약
+    x[48*320 + ti]   = px[pi + 1] / 127.5 - 1;
+    x[2*48*320 + ti] = px[pi]     / 127.5 - 1;
+  }
+  const out = await recSess.run({ [recSess.inputNames[0]]: new ort.Tensor('float32', x, [1, 3, 48, 320]) });
+  const t = out[recSess.outputNames[0]];
+  lastRecN++;
+  return ctcDecode(t.data, t.dims[1], t.dims[2], recChars);
+}
+
+async function detRecPiece(cnv) {                      // 피스 로컬 좌표 토큰 [{t,x,y}]
+  const w = cnv.width, h = cnv.height;
+  const sc = Math.min(1, 960 / Math.max(w, h));
+  const nw = Math.max(32, Math.round(w * sc / 32) * 32), nh = Math.max(32, Math.round(h * sc / 32) * 32);
+  const dc = new OffscreenCanvas(nw, nh), dg = dc.getContext('2d', { willReadFrequently: true });
+  dg.drawImage(cnv, 0, 0, w, h, 0, 0, nw, nh);
+  const px = dg.getImageData(0, 0, nw, nh).data;
+  const n = nh * nw, x = new Float32Array(3 * n);
+  for (let i = 0; i < n; i++) {                        // BGR + ImageNet 정규화 (det yml)
+    x[i]       = (px[i*4+2] / 255 - .485) / .229;
+    x[n + i]   = (px[i*4+1] / 255 - .456) / .224;
+    x[2*n + i] = (px[i*4]   / 255 - .406) / .225;
+  }
+  const out = await detSess.run({ [detSess.inputNames[0]]: new ort.Tensor('float32', x, [1, 3, nh, nw]) });
+  const prob = out[detSess.outputNames[0]].data;       // (1,1,nh,nw)
+  const toks = [];
+  const rx = w / nw, ry = h / nh;
+  for (const [bx0, by0, bx1, by1] of dbComponents(prob, nw, nh)) {
+    const cx0 = Math.floor(bx0 * rx), cy0 = Math.floor(by0 * ry);
+    const cw = Math.ceil((bx1 - bx0) * rx), ch = Math.ceil((by1 - by0) * ry);
+    if (cw < 4 || ch < 4) continue;
+    const t = await recLine(cnv, cx0, cy0, cw, ch);
+    if (t) toks.push({ t, x: cx0 + cw / 2, y: cy0 + ch / 2 });
+  }
+  return toks;
+}
+
+async function stripTokens(img, sy0, sy1, W, onMsg, tag) {
+  const h = sy1 - sy0;
+  const f = h < 320 ? Math.min(3, 960 / h) : Math.min(1, 1000 / h);   // 저해상 ×3 업스케일 (검증본)
+  const sw = Math.round(W * f), sh = Math.round(h * f);
+  const strip = new OffscreenCanvas(sw, sh);
+  strip.getContext('2d').drawImage(img, 0, sy0, W, h, 0, 0, sw, sh);
+  const chunk = 1280, ov = f > 1 ? Math.round(120 * f) : 120;         // 겹침은 원본 기준 유지
+  const toks = [];
+  if (Math.max(sw, sh) <= chunk + ov) toks.push(...await detRecPiece(strip));
+  else for (let x = 0; x < sw; x += chunk) {
+    const pw = Math.min(sw, x + chunk + ov) - x;
+    const piece = new OffscreenCanvas(pw, sh);
+    piece.getContext('2d').drawImage(strip, x, 0, pw, sh, 0, 0, pw, sh);
+    for (const t of await detRecPiece(piece)) {
+      if (x > 0 && t.x < ov * 0.5) continue;           // 청크 경계 중복 제거
+      toks.push({ t: t.t, x: t.x + x, y: t.y });
+    }
+    onMsg?.(`청구기호 읽는 중… ${tag} ${Math.min(99, Math.round((x + chunk) / sw * 100))}%`);
+  }
+  return toks.map(t => ({ t: t.t, x: t.x / f, y: t.y / f + sy0 }));   // 사진 절대 좌표
+}
+
+async function recognizeAll(img, rows, onMsg) {
+  if (!await ensureRec(onMsg)) return false;
+  const { W, H } = dims(img);
+  bandCluster(rows);
+  const t0 = performance.now(); lastRecN = 0;
+  const bands = [...new Set(rows.map(r => r.band))].sort((a, b) => a - b);
+  const extras = [];
+  let bi = 0;
+  for (const b of bands) {
+    bi++;
+    const rb = rows.filter(r => r.band === b).sort((p, q) => p.box[0] - q.box[0]);
+    const sy0 = Math.max(0, Math.round(Math.min(...rb.map(r => r.box[1]))));
+    const sy1 = Math.min(H, Math.round(Math.max(...rb.map(r => r.box[3]))));
+    if (sy1 - sy0 < 8) continue;
+    onMsg?.(`청구기호 읽는 중… 줄 ${bi}/${bands.length}`);
+    const toks = await stripTokens(img, sy0, sy1, W, onMsg, `줄 ${bi}/${bands.length}`);
+    extras.push(...assignTokens(rb, toks, txt => matchCall(txt, recIdx)));
+  }
+  rows.push(...extras);                                // 클러스터 채널 회수 라벨
+  lastRecMs = performance.now() - t0;
+  flagMisplaced(rows);                                 // 오배열 플래그는 직독(청구기호)만
+  return true;
+}
+
+// 공통 스캔 경로: 검출 → (진행 표시) → 인식·대조·판정 → 최종 렌더
+let scanning = false;                                  // 판독 20~30초 — 중복 실행 시 결과 뒤섞임 방지
+async function scanImage(img, title) {
+  if (scanning) { document.getElementById('scan-title').textContent = '판독 중이에요 — 잠시만요'; return; }
+  scanning = true;
+  try {
+    const rows = await detect(img);
+    renderAll(img, rows, `${title} — 청구기호를 읽는 중…`, false);
+    const okRec = await recognizeAll(img, rows, m => document.getElementById('scan-title').textContent = m);
+    const nOk = rows.filter(r => r.call && !r.mis).length, nMis = rows.filter(r => r.mis).length;
+    renderAll(img, rows, okRec ? `${title} — ${nOk}권 확인${nMis ? ` · ${nMis}권 의심` : ''}`
+                               : `${title} — 책 ${rows.length}권 (인식 모델 로드 실패)`);
+  } finally { scanning = false; }
+}
 
 function dims(el) { return { W: el.videoWidth || el.naturalWidth, H: el.videoHeight || el.naturalHeight }; }
 function fitRect(el) {
@@ -296,29 +450,40 @@ async function detect(img) {
   return rows;
 }
 
-function renderAll(img, rows, title) {
+function renderAll(img, rows, title, bag = true) {
   lastImg = img; lastRows = rows; lastLocate = null;
   document.getElementById('scan-title').textContent = title;
   drawBoxes(img, rows);
   fillSheet(img, rows);           // ← 결과가 즉시 하단 시트에 (페이지 이동 없음)
   setSheet(false);
-  bagCrops(img, rows);            // 조각 가방에 자동 누적 (제공은 버튼 눌러 동의할 때만)
-  const nd = rows.filter(r => r.how === '청구기호').length, nt = rows.filter(r => r.how === '제목복구').length;
+  if (bag) bagCrops(img, rows);   // 조각 가방에 자동 누적 (제공은 버튼 눌러 동의할 때만; 중간 렌더는 제외)
+  const nd = rows.filter(r => r.how === '청구기호').length;
   document.getElementById('dev-info').innerHTML =
     `검출 call_label_yolo3 · ${backend} · ${lastMs.toFixed(0)}ms · 박스 ${rows.length}<br>` +
-    `직독 ${nd} · 제목복구 ${nt} · 인식/대조 korean_lowres_v4 파이프라인 실측`;
+    `인식 rec_v4 fp16 (${recBackend}) · 줄 ${lastRecN}개 ${(lastRecMs/1000).toFixed(1)}s · 직독 ${nd}<br>` +
+    `대조 1,860권 카탈로그 · 판정 행별 LIS — 전 과정 온디바이스`;
 }
 
 // ── 라이브 모드: 카메라 스트림 위 실시간 검출 루프 ──
 let live = false, stream = null;
-async function toggleLive() {
+async function toggleLive(analyze = true) {
   const cam = document.getElementById('cam'), photo = document.getElementById('photo'),
         btn = document.getElementById('btn-live');
-  if (live) {                                        // 일시정지 (동기 경로 — 여기서만 오버레이 정리)
+  if (live) {                                        // 일시정지: 멈춘 화면을 그 자리에서 판독
     live = false;
+    let frame = null;
+    if (analyze && cam.videoWidth) {                 // 사진/샘플 전환(analyze=false)은 캡처 생략
+      frame = document.createElement('canvas');
+      frame.width = cam.videoWidth; frame.height = cam.videoHeight;
+      frame.getContext('2d').drawImage(cam, 0, 0);
+    }
     if (stream) stream.getTracks().forEach(t => t.stop());
     cam.classList.add('hidden'); btn.textContent = '▶ 재개';
-    document.getElementById('ar').innerHTML = '';
+    if (frame) {
+      photo.src = frame.toDataURL('image/jpeg', .92);
+      await photo.decode();
+      await scanImage(photo, '멈춘 화면');
+    } else document.getElementById('ar').innerHTML = '';
     return;
   }
   if (!navigator.mediaDevices?.getUserMedia) {
@@ -354,28 +519,26 @@ async function toggleLive() {
 }
 
 async function loadDemo(n) {
-  if (live) toggleLive();
+  if (!sess) { document.getElementById('scan-title').textContent = '모델 준비 중… 잠시 후 다시 시도해주세요'; return; }
+  if (live) await toggleLive(false);
   document.getElementById('cam').classList.add('hidden');
   const img = document.getElementById('photo');
   try {
     img.src = `demo/demo${n}.jpg`;
     await img.decode();
-    if (sess) await detect(img);                                    // 온디바이스 검출 (모델 준비 전이면 생략)
-    const rows = await (await fetch(`demo/demo${n}.json`)).json();  // 인식·대조 = 파이프라인 실측
-    renderAll(img, rows, n === 1 ? '600번대 서가' : '700번대 서가');
-  } catch(e) { document.getElementById('scan-title').textContent = '시연 자료를 불러오지 못했어요'; }
+    await scanImage(img, n === 1 ? '600번대 서가' : '700번대 서가');   // 검출→인식→판정 전부 온디바이스
+  } catch(e) { document.getElementById('scan-title').textContent = '샘플 사진을 불러오지 못했어요'; }
 }
 
 document.getElementById('file').onchange = async ev => {
   const f = ev.target.files[0]; if (!f) return;
   if (!sess) { document.getElementById('scan-title').textContent = '모델 준비 중… 잠시 후 다시 시도해주세요'; return; }
-  if (live) toggleLive();
+  if (live) await toggleLive(false);
   const img = document.getElementById('photo');
   img.src = URL.createObjectURL(f);
   await img.decode();
   document.getElementById('scan-title').textContent = '서가를 살펴보는 중…';
-  const rows = await detect(img);
-  renderAll(img, rows, `내 서가 — 책 ${rows.length}권 발견`);
+  await scanImage(img, '내 서가');
   ev.target.value = '';                              // 같은 파일 재선택 시 onchange 재발화
 };
 
@@ -395,7 +558,7 @@ async function openFind() {
         for (const r of rows) if (r.call && !located.has(r.call)) located.set(r.call, { demo: n, box: r.box });
       }
       // 전체 장서목록 (1,860권) — 위치 확인 여부 표시
-      const cat = await (await fetch('demo/catalog.json')).json();
+      const cat = await loadCatalogRaw();
       findIdx = cat.map(c => ({ ...c, loc: located.get(c.call) || null }));
       findIdx.sort((a, b) => (b.loc ? 1 : 0) - (a.loc ? 1 : 0) || a.call.localeCompare(b.call, 'ko'));
       findN = { total: findIdx.length, loc: [...located.keys()].length };
@@ -589,7 +752,7 @@ async function exportCrops() {
     document.getElementById('btn-crops').textContent = '📦 학습용 조각 제공 (동의)';
     return;
   }
-  if (!cropBag.length && !scanSeq) { alert('먼저 서가를 스캔해주세요 (사진 업로드 또는 판정 시연)\n스캔할 때마다 조각이 자동으로 모입니다'); return; }
+  if (!cropBag.length && !scanSeq) { alert('먼저 서가를 스캔해주세요 (사진 업로드 또는 샘플 서가)\n스캔할 때마다 조각이 자동으로 모입니다'); return; }
   if (!confirm(`학습용 조각 제공에 동의하시나요? (현재 ${cropBag.length}개 대기)\n\n· 사진 전체가 아니라 책 라벨 조각만 담아요\n· 인식된 청구기호가 정답으로 함께 저장돼요\n· 동의하면 이후 스캔부터 자동으로 제공돼요 (버튼 다시 누르면 중지)`)) return;
   localStorage.setItem('libar_optin', '1');
   await flushBag();
@@ -597,7 +760,7 @@ async function exportCrops() {
 
 let lastLocate = null;
 async function locate(b) {
-  if (live) toggleLive();
+  if (live) await toggleLive(false);
   document.getElementById('cam').classList.add('hidden');
   show('scan');
   const img = document.getElementById('photo');
@@ -611,6 +774,21 @@ async function locate(b) {
     setSheet(false);
   } catch(e) { document.getElementById('scan-title').textContent = '서가 사진을 불러오지 못했어요'; }
 }
+
+// 헤드리스 자동 테스트: app.html#autotest → 샘플 1 온디바이스 판독 후 결과를 pre#testout으로 노출
+if (location.hash.startsWith('#autotest')) addEventListener('load', async () => {
+  let err = null;
+  try { await sessReady; await loadDemo(1); } catch(e) { err = String(e); }
+  const pre = document.createElement('pre'); pre.id = 'testout';
+  pre.textContent = '@@TESTOUT@@' + JSON.stringify({
+    err, boxes: lastRows?.length, ok: lastRows?.filter(r => r.call && !r.mis).length,
+    mis: lastRows?.filter(r => r.mis).length, det: backend, rec: recBackend,
+    recMs: Math.round(lastRecMs), lines: lastRecN,
+    hits: lastRows?.filter(r => r.call).map(r => ({ read: r.read, call: r.call, mis: !!r.mis })),
+    reads: lastRows?.map(r => r.read || '')
+  }, null, 1) + '@@END@@';
+  document.body.appendChild(pre);
+});
 function locateRender(b) {
   const img = document.getElementById('photo');
   document.getElementById('scan-title').textContent = `"${(b.title || b.call).slice(0, 14)}" 여기 있어요`;
