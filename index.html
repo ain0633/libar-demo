@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html class="dark" lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>LibAR — 서가 스캔</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&family=Geist:wght@500;600&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<!-- webgpu 포함 번들 필수: 기본 ort.min.js는 webgpu 백엔드가 없어 조용히 WASM 강등됨 (헤드리스 디버깅으로 발견) -->
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.webgpu.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<style>
+  @keyframes pulse-glow { 0%{box-shadow:0 0 0 0 rgba(75,226,119,.4)} 70%{box-shadow:0 0 0 10px rgba(75,226,119,0)} 100%{box-shadow:0 0 0 0 rgba(75,226,119,0)} }
+  .material-symbols-outlined { font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24; }
+  .view { display:none; } .view.active { display:block; }
+  #sheet { transition:transform .28s cubic-bezier(.3,.9,.3,1); }
+</style>
+<script id="tailwind-config">
+tailwind.config = { darkMode:"class", theme:{ extend:{
+  colors:{ "surface-container":"#171f33","surface-container-high":"#222a3d","surface-container-low":"#131b2e",
+    "primary":"#4be277","primary-container":"#22c55e","on-primary":"#003915","on-primary-container":"#004b1e",
+    "background":"#0b1326","on-surface":"#dae2fd","on-surface-variant":"#bccbb9","surface-variant":"#2d3449",
+    "outline":"#869585","outline-variant":"#3d4a3d","error":"#ff6b64","error-container":"#93000a","on-error":"#690005" },
+  fontFamily:{ "headline":["Hanken Grotesk"], "mono-data":["Geist"] }
+}}};
+</script>
+</head>
+<body class="bg-background text-on-surface font-headline min-h-screen">
+
+<!-- ═══════ 홈 화면 ═══════ -->
+<div id="view-home" class="view active max-w-md mx-auto px-4 py-6 space-y-6">
+  <header class="flex justify-between items-center">
+    <div class="flex items-center gap-2">
+      <span class="material-symbols-outlined text-primary text-3xl">view_in_ar</span>
+      <h1 class="text-2xl font-bold">LibAR</h1>
+    </div>
+    <button class="bg-surface-container border border-outline-variant rounded-lg px-3 py-1.5 text-sm flex items-center gap-1">
+      영등포구립 대림도서관 <span class="material-symbols-outlined text-base">expand_more</span>
+    </button>
+  </header>
+
+  <div class="space-y-4 pt-4">
+    <!-- (이용자) 도서 찾기 -->
+    <button onclick="openFind()" class="relative w-full bg-surface-container border border-outline-variant rounded-2xl p-6 text-left space-y-2">
+      <span class="absolute top-3 right-4 text-[11px] bg-surface-variant/60 text-on-surface-variant rounded-full px-2.5 py-0.5">이용자</span>
+      <span class="material-symbols-outlined text-5xl text-primary">search</span>
+      <div class="font-bold text-2xl">도서 찾기</div>
+      <div class="text-sm text-on-surface-variant">읽고 싶은 책이 어느 서가, 어느 칸에 있는지 안내해드려요</div>
+    </button>
+    <!-- (사서) 서가 점검하기 -->
+    <button onclick="enterScan()" class="relative w-full bg-primary-container text-on-primary-container rounded-2xl p-6 text-left space-y-2 shadow-lg" style="animation:pulse-glow 2.5s infinite">
+      <span class="absolute top-3 right-4 text-[11px] bg-background/25 rounded-full px-2.5 py-0.5">사서</span>
+      <span class="material-symbols-outlined text-5xl">photo_camera</span>
+      <div class="font-bold text-2xl">서가 점검하기</div>
+      <div class="text-sm opacity-85">서가를 비추며 걸으면 잘못 꽂힌 책을 찾아드려요</div>
+    </button>
+  </div>
+
+  <footer class="text-center text-xs text-on-surface-variant space-y-1 pt-2">
+    <div>🔒 촬영한 사진은 휴대폰 밖으로 나가지 않아요</div>
+    <details class="text-[10px] opacity-60"><summary class="cursor-pointer">개발자 정보</summary>
+      <span class="font-mono-data">인식 v4 · 검출 v3 · <span id="home-backend">-</span></span></details>
+  </footer>
+</div>
+
+<!-- ═══════ 도서 찾기 화면 ═══════ -->
+<div id="view-find" class="view max-w-md mx-auto px-4 py-6 space-y-4">
+  <header class="flex items-center gap-2">
+    <span class="material-symbols-outlined text-primary cursor-pointer" onclick="show('home')">arrow_back</span>
+    <h1 class="text-xl font-bold">도서 찾기</h1>
+  </header>
+  <input id="find-q" type="search" placeholder="제목이나 청구기호를 입력하세요"
+         class="w-full bg-surface-container border border-outline-variant rounded-xl px-4 py-3 text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:ring-0">
+  <p class="text-xs text-on-surface-variant">등록 장서 <span id="find-n">-</span> — 스캔할수록 정확한 위치가 늘어나요</p>
+  <div id="find-list" class="bg-surface-container border border-outline-variant rounded-xl divide-y divide-outline-variant max-h-[60vh] overflow-y-auto"></div>
+</div>
+
+<!-- ═══════ 길찾기 화면: 층 → 서가 → LibAR 스캔 유도 ═══════ -->
+<div id="view-guide" class="view max-w-md mx-auto px-4 py-6 space-y-4">
+  <header class="flex items-center gap-2">
+    <span class="material-symbols-outlined text-primary cursor-pointer" onclick="show('find')">arrow_back</span>
+    <h1 class="text-xl font-bold">길 안내</h1>
+  </header>
+  <div class="bg-surface-container border border-outline-variant rounded-xl p-3 flex justify-between items-center">
+    <div class="min-w-0">
+      <div class="text-sm truncate" id="g-title">-</div>
+      <div class="font-mono-data text-xs text-on-surface-variant" id="g-call">-</div>
+    </div>
+    <span class="shrink-0 text-xs bg-primary/20 text-primary rounded-lg px-2.5 py-1.5 font-bold" id="g-floorchip">3층 종합자료실</span>
+  </div>
+
+  <!-- 층별 지도 (대림도서관 홈페이지 배치도 → LibAR 디자인) -->
+  <div class="bg-surface-container border border-outline-variant rounded-xl p-3 space-y-2">
+    <div id="g-tabs" class="flex gap-1.5"></div>
+    <svg id="g-map" viewBox="0 0 360 250" class="w-full"></svg>
+    <div class="text-[10px] text-on-surface-variant text-center">
+      <a href="https://www.ydplib.or.kr/drlib/menu/10113/contents/40028/contents.do" target="_blank" class="underline">대림도서관 공식 층별 안내 ↗</a> 기반</div>
+  </div>
+
+  <!-- 서가 스캔 유도 -->
+  <div class="bg-primary-container text-on-primary-container rounded-xl p-4 space-y-2" style="animation:pulse-glow 2s infinite">
+    <div class="font-bold" id="g-sec">-</div>
+    <div class="text-xs opacity-90">서가 앞에서 카메라로 비추면 찾는 책이 어느 칸에 있는지 짚어드려요</div>
+    <button onclick="enterScan()" class="w-full bg-background/20 border border-on-primary-container/30 rounded-lg py-2.5 font-bold flex items-center justify-center gap-2">
+      <span class="material-symbols-outlined">photo_camera</span> 서가 스캔 시작
+    </button>
+  </div>
+</div>
+
+<!-- ═══════ 스캔 화면 (실시간 하단 결과 시트) ═══════ -->
+<div id="view-scan" class="view fixed inset-0 overflow-hidden">
+  <div class="absolute inset-0 bg-black">
+    <img id="photo" class="absolute inset-0 w-full h-full object-contain" alt="">
+    <video id="cam" class="absolute inset-0 w-full h-full object-contain hidden" autoplay muted playsinline></video>
+  </div>
+  <div id="ar" class="absolute inset-0 pointer-events-none"></div>
+
+  <!-- 상단 상태 바 -->
+  <header class="fixed top-0 left-0 w-full z-40 px-4 pt-4">
+    <div class="bg-surface-container/70 backdrop-blur-md rounded-xl px-4 py-3 border border-outline-variant flex justify-between items-center">
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-primary cursor-pointer" onclick="show('home')" style="pointer-events:auto">arrow_back</span>
+        <h1 class="font-bold text-sm" id="scan-title">사진을 선택하세요</h1>
+      </div>
+      <button onclick="toggleLive()" id="btn-live" style="pointer-events:auto"
+              class="bg-primary/25 text-primary border border-primary/50 rounded-lg px-2.5 py-1.5 font-bold text-xs">⏸ 일시정지</button>
+    </div>
+  </header>
+
+  <!-- 부가 기능 (시트 위 우하단): 사진 업로드 + 판정 시연 -->
+  <div class="fixed right-3 z-40 flex flex-col items-end gap-1.5" style="bottom:130px; pointer-events:auto">
+    <label class="bg-surface-container/85 backdrop-blur border border-outline-variant rounded-lg px-3 py-2 text-xs font-bold cursor-pointer">
+      🖼 사진 업로드<input type="file" accept="image/*" id="file" class="hidden"></label>
+    <div class="flex gap-1.5 text-[10px]">
+      <button onclick="loadDemo(1)" class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-on-surface-variant">판정 시연·광각</button>
+      <button onclick="loadDemo(2)" class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-on-surface-variant">판정 시연·각도</button>
+    </div>
+    <button onclick="exportCrops()" id="btn-crops"
+            class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-[10px] text-on-surface-variant">📦 학습용 조각 제공 (동의)</button>
+  </div>
+
+  <!-- ▼ 실시간 결과 바텀시트 -->
+  <div id="sheet" class="fixed bottom-0 left-0 w-full z-50 bg-surface-container-low/95 backdrop-blur-md border-t border-outline-variant rounded-t-2xl"
+       style="height:72vh; transform:translateY(calc(72vh - 118px));">
+    <!-- 핸들 + 요약 칩 (항상 노출) -->
+    <div id="sheet-head" class="cursor-pointer select-none">
+      <div class="flex justify-center pt-2 pb-1"><div class="w-10 h-1 rounded-full bg-outline-variant"></div></div>
+      <div class="grid grid-cols-3 gap-2 px-4 pb-3">
+        <div class="rounded-xl py-2 text-center bg-primary/15 border border-primary/40">
+          <div class="text-xl font-bold text-primary" id="c-ok">0</div><div class="text-[11px] text-primary">확인</div>
+        </div>
+        <div class="rounded-xl py-2 text-center bg-error/10 border border-error/40">
+          <div class="text-xl font-bold text-error" id="c-mis">0</div><div class="text-[11px] text-error">잘못 꽂힘</div>
+        </div>
+        <div class="rounded-xl py-2 text-center bg-surface-variant/40 border border-outline-variant">
+          <div class="text-xl font-bold text-on-surface-variant" id="c-gray">0</div><div class="text-[11px] text-on-surface-variant">다시 확인</div>
+        </div>
+      </div>
+    </div>
+    <!-- 펼친 내용 -->
+    <div class="overflow-y-auto px-4 pb-8 space-y-5" style="height:calc(72vh - 118px)">
+      <section id="sec-mis" class="space-y-2 hidden">
+        <h3 class="text-sm font-bold text-error flex items-center gap-1"><span class="material-symbols-outlined text-[18px]">priority_high</span>잘못 꽂힌 책</h3>
+        <div id="list-mis" class="space-y-2"></div>
+      </section>
+      <section class="space-y-2">
+        <h3 class="text-sm font-bold text-primary flex items-center gap-1"><span class="material-symbols-outlined text-[18px]">check_circle</span>확인된 책 <span id="n-ok2" class="opacity-60 font-normal"></span></h3>
+        <div id="list-ok" class="grid grid-cols-2 gap-2"></div>
+      </section>
+      <section class="space-y-2">
+        <h3 class="text-sm font-bold text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined text-[18px]">help</span>다시 확인이 필요한 책</h3>
+        <p class="text-[11px] text-on-surface-variant">가까이서 한 번 더 비추면 대부분 확인돼요</p>
+        <div id="list-gray" class="flex gap-1.5 flex-wrap"></div>
+      </section>
+      <details class="text-xs text-on-surface-variant pt-1">
+        <summary class="cursor-pointer opacity-70">개발자 정보</summary>
+        <div class="font-mono-data pt-2" id="dev-info"></div>
+      </details>
+    </div>
+  </div>
+</div>
+
+<script>
+const SZ = 1280, CONF = 0.25;
+let sess = null, lastRows = null, lastImg = null, lastMs = 0, expanded = false;
+
+function show(v) { document.querySelectorAll('.view').forEach(e => e.classList.remove('active'));
+  document.getElementById('view-' + v).classList.add('active'); }
+// 서가 점검·길안내에서 진입 시 카메라 자동 시작 (사진 업로드·판정 시연은 부가 기능)
+function enterScan() { show('scan'); if (!live) toggleLive(); }
+
+// 바텀시트 접기/펼치기
+const sheet = document.getElementById('sheet');
+function setSheet(open) { expanded = open;
+  sheet.style.transform = open ? 'translateY(0)' : 'translateY(calc(72vh - 118px))'; }
+document.getElementById('sheet-head').onclick = () => setSheet(!expanded);
+let ty0 = null;
+sheet.addEventListener('touchstart', e => ty0 = e.touches[0].clientY, { passive:true });
+sheet.addEventListener('touchend', e => { if (ty0 === null) return;
+  const dy = e.changedTouches[0].clientY - ty0; ty0 = null;
+  if (dy < -40) setSheet(true); else if (dy > 40) setSheet(false); });
+
+let backend = '-';
+(async () => {
+  const tries = navigator.gpu ? [['webgpu','wasm'], ['wasm']] : [['wasm']];
+  for (const eps of tries) {
+    try {
+      sess = await ort.InferenceSession.create('model/best.onnx', { executionProviders: eps });
+      backend = eps[0] === 'webgpu' ? 'WebGPU' : 'WASM';
+      document.getElementById('home-backend').textContent = backend;
+      return;
+    } catch(e) { console.error('ORT init 실패', eps, e); }
+  }
+  document.getElementById('home-backend').textContent = '모델 로드 실패';
+})();
+
+function dims(el) { return { W: el.videoWidth || el.naturalWidth, H: el.videoHeight || el.naturalHeight }; }
+function fitRect(el) {
+  const vw = innerWidth, vh = innerHeight, { W, H } = dims(el);
+  const s = Math.min(vw / W, vh / H);
+  return { s, ox: (vw - W * s) / 2, oy: (vh - H * s) / 2 };
+}
+
+// AR 오버레이 (사진 위 실좌표 박스)
+function drawBoxes(img, rows) {
+  const { s, ox, oy } = fitRect(img);
+  const ar = document.getElementById('ar'); ar.innerHTML = '';
+  for (const r of rows) {
+    const [x0, y0, x1, y1] = r.box;
+    const d = document.createElement('div');
+    d.style.cssText = `position:absolute;left:${x0*s+ox}px;top:${y0*s+oy}px;width:${(x1-x0)*s}px;height:${(y1-y0)*s}px;border-radius:2px;`;
+    if (r.mis) { d.style.border = '2px solid rgba(255,107,100,.95)'; d.style.background = 'rgba(255,107,100,.18)'; }
+    else if (r.call || r.live) { d.style.border = '2px solid rgba(75,226,119,.85)'; d.style.background = 'rgba(75,226,119,.12)'; }
+    else { d.style.border = '1px solid rgba(134,149,133,.55)'; d.style.background = 'rgba(45,52,73,.22)'; }
+    ar.appendChild(d);
+  }
+}
+
+// 사진에서 박스 영역 썸네일 크롭
+function thumb(img, box, w = 72) {
+  const [x0, y0, x1, y1] = box.map(Math.round);
+  const c = document.createElement('canvas');
+  const bw = Math.max(1, x1 - x0), bh = Math.max(1, y1 - y0);
+  c.width = w; c.height = Math.round(w * bh / bw);
+  c.getContext('2d').drawImage(img, x0, y0, bw, bh, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', .7);
+}
+
+// ▼ 실시간 결과 시트 채우기 — 화면 전환 없음
+function fillSheet(img, rows) {
+  const ok = rows.filter(r => r.call && !r.mis), mis = rows.filter(r => r.mis), gray = rows.filter(r => !r.call);
+  document.getElementById('c-ok').textContent = ok.length;
+  document.getElementById('c-mis').textContent = mis.length;
+  document.getElementById('c-gray').textContent = gray.length;
+  document.getElementById('n-ok2').textContent = ok.length + '권';
+
+  const lm = document.getElementById('list-mis'); lm.innerHTML = '';
+  document.getElementById('sec-mis').classList.toggle('hidden', !mis.length);
+  for (const r of mis) {
+    lm.insertAdjacentHTML('beforeend',
+      `<div class="flex items-center gap-3 bg-error/10 border border-error/40 rounded-xl p-2.5">
+        <img src="${thumb(img, r.box, 56)}" class="w-10 rounded border border-error/50">
+        <div class="flex-1"><div class="font-mono-data text-sm font-semibold">${r.call}</div>
+        <div class="text-[11px] text-on-surface-variant">${r.title || ''}</div>
+        <div class="text-[11px] text-error font-semibold">${r.guide || '제자리가 아니에요'}</div></div>
+        <button class="text-[11px] bg-error/20 text-error rounded-lg px-2 py-1">해결</button></div>`);
+  }
+  const lo = document.getElementById('list-ok'); lo.innerHTML = '';
+  for (const r of ok) {
+    lo.insertAdjacentHTML('beforeend',
+      `<div class="flex items-center gap-2 bg-surface-container border border-outline-variant rounded-lg p-2">
+        <img src="${thumb(img, r.box, 48)}" class="w-8 rounded">
+        <div class="min-w-0"><div class="font-mono-data text-[11px] font-semibold truncate">${r.call}</div>
+        <div class="text-[10px] text-on-surface-variant truncate">${r.title || ''}</div></div></div>`);
+  }
+  const lg = document.getElementById('list-gray'); lg.innerHTML = '';
+  for (const r of gray.slice(0, 36)) lg.insertAdjacentHTML('beforeend', `<img src="${thumb(img, r.box, 40)}" class="w-9 rounded opacity-70 border border-outline-variant">`);
+  if (gray.length > 36) lg.insertAdjacentHTML('beforeend', `<span class="text-[11px] text-on-surface-variant self-center">+${gray.length - 36}권</span>`);
+}
+
+async function detect(img) {
+  const { W, H } = dims(img); const r = SZ / Math.max(W, H);
+  const off = new OffscreenCanvas(SZ, SZ), ox = off.getContext('2d');
+  ox.fillStyle = 'rgb(114,114,114)'; ox.fillRect(0, 0, SZ, SZ);
+  ox.drawImage(img, 0, 0, W * r, H * r);
+  const px = ox.getImageData(0, 0, SZ, SZ).data;
+  const x = new Float32Array(3 * SZ * SZ);
+  for (let i = 0, n = SZ * SZ; i < n; i++) { x[i] = px[i*4]/255; x[n+i] = px[i*4+1]/255; x[2*n+i] = px[i*4+2]/255; }
+  const t0 = performance.now();
+  const out = await sess.run({ images: new ort.Tensor('float32', x, [1, 3, SZ, SZ]) });
+  lastMs = performance.now() - t0;
+  const d = out[Object.keys(out)[0]].data, rows = [];
+  for (let i = 0; i < d.length; i += 6)
+    if (d[i+4] >= CONF) rows.push({ box: [d[i]/r, d[i+1]/r, d[i+2]/r, d[i+3]/r], call: null, how: null });
+  return rows;
+}
+
+function renderAll(img, rows, title) {
+  lastImg = img; lastRows = rows; lastLocate = null;
+  document.getElementById('scan-title').textContent = title;
+  drawBoxes(img, rows);
+  fillSheet(img, rows);           // ← 결과가 즉시 하단 시트에 (페이지 이동 없음)
+  setSheet(false);
+  const nd = rows.filter(r => r.how === '청구기호').length, nt = rows.filter(r => r.how === '제목복구').length;
+  document.getElementById('dev-info').innerHTML =
+    `검출 call_label_yolo3 · ${backend} · ${lastMs.toFixed(0)}ms · 박스 ${rows.length}<br>` +
+    `직독 ${nd} · 제목복구 ${nt} · 인식/대조 korean_lowres_v4 파이프라인 실측`;
+}
+
+// ── 라이브 모드: 카메라 스트림 위 실시간 검출 루프 ──
+let live = false, stream = null;
+async function toggleLive() {
+  const cam = document.getElementById('cam'), photo = document.getElementById('photo'),
+        btn = document.getElementById('btn-live');
+  if (live) {                                        // 일시정지 (동기 경로 — 여기서만 오버레이 정리)
+    live = false;
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    cam.classList.add('hidden'); btn.textContent = '▶ 재개';
+    document.getElementById('ar').innerHTML = '';
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    document.getElementById('scan-title').textContent = '카메라 미지원 (HTTPS 또는 localhost 필요)';
+    btn.textContent = '▶ 카메라'; return; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 } } });
+  } catch(e) { document.getElementById('scan-title').textContent = '카메라 권한이 필요해요 — 사진 업로드로도 쓸 수 있어요';
+    btn.textContent = '▶ 카메라'; return; }
+  cam.srcObject = stream; await cam.play();
+  cam.classList.remove('hidden'); photo.removeAttribute('src');
+  btn.textContent = '⏸ 일시정지'; live = true;
+  setSheet(false);
+  // 라이브 시작: 이전 사진/데모의 시트 잔상 제거
+  for (const id of ['c-ok', 'c-mis']) document.getElementById(id).textContent = '0';
+  for (const id of ['list-mis', 'list-ok', 'list-gray']) document.getElementById(id).innerHTML = '';
+  document.getElementById('sec-mis').classList.add('hidden');
+  let n = 0, tSum = 0;
+  while (live) {                                     // 직렬 루프: 추론 끝나는 대로 다음 프레임
+    if (!cam.videoWidth) break;                      // 일시정지 직후 죽은 스트림 가드 (0 나누기 방지)
+    const rows = await detect(cam);
+    if (!live) break;                                // 정지·데모 전환 후 늦게 깬 루프는 그리지 않고 종료
+    rows.forEach(r => r.live = true);
+    drawBoxes(cam, rows);
+    n++; tSum += lastMs;
+    document.getElementById('scan-title').textContent = `📚 책 ${rows.length}권 보임 — 천천히 움직여주세요`;
+    document.getElementById('c-gray').textContent = rows.length;
+    document.getElementById('dev-info').innerHTML =
+      `라이브 검출 ${(1000/(tSum/n)).toFixed(1)} FPS · ${lastMs.toFixed(0)}ms/프레임 · ${backend}`;
+    await new Promise(r => setTimeout(r, 30));       // UI 숨쉴 틈
+  }
+  // 주의: 여기서 #ar를 비우면 안 됨 — 데모/사진 전환이 이미 새 박스를 그린 뒤일 수 있음 (레이스)
+}
+
+async function loadDemo(n) {
+  if (live) toggleLive();
+  document.getElementById('cam').classList.add('hidden');
+  const img = document.getElementById('photo');
+  try {
+    img.src = `demo/demo${n}.jpg`;
+    await img.decode();
+    if (sess) await detect(img);                                    // 온디바이스 검출 (모델 준비 전이면 생략)
+    const rows = await (await fetch(`demo/demo${n}.json`)).json();  // 인식·대조 = 파이프라인 실측
+    renderAll(img, rows, n === 1 ? '600번대 서가' : '700번대 서가');
+  } catch(e) { document.getElementById('scan-title').textContent = '시연 자료를 불러오지 못했어요'; }
+}
+
+document.getElementById('file').onchange = async ev => {
+  const f = ev.target.files[0]; if (!f) return;
+  if (!sess) { document.getElementById('scan-title').textContent = '모델 준비 중… 잠시 후 다시 시도해주세요'; return; }
+  if (live) toggleLive();
+  const img = document.getElementById('photo');
+  img.src = URL.createObjectURL(f);
+  await img.decode();
+  document.getElementById('scan-title').textContent = '서가를 살펴보는 중…';
+  const rows = await detect(img);
+  renderAll(img, rows, `내 서가 — 책 ${rows.length}권 발견`);
+  ev.target.value = '';                              // 같은 파일 재선택 시 onchange 재발화
+};
+
+addEventListener('resize', () => {
+  if (lastLocate) locateRender(lastLocate);                       // 도서찾기 하이라이트 유지
+  else if (lastImg && lastRows) drawBoxes(lastImg, lastRows); });
+
+// ── 도서 찾기: 최근 스캔(데모 2장)에서 위치 확인된 책 검색 → 서가에서 하이라이트 ──
+let findIdx = null;
+async function openFind() {
+  if (!findIdx) {
+    try {
+      // 위치 확인된 책 (스캔 실측) — call → 사진·박스
+      const located = new Map();
+      for (const n of [1, 2]) {
+        const rows = await (await fetch(`demo/demo${n}.json`)).json();
+        for (const r of rows) if (r.call && !located.has(r.call)) located.set(r.call, { demo: n, box: r.box });
+      }
+      // 전체 장서목록 (1,860권) — 위치 확인 여부 표시
+      const cat = await (await fetch('demo/catalog.json')).json();
+      findIdx = cat.map(c => ({ ...c, loc: located.get(c.call) || null }));
+      findIdx.sort((a, b) => (b.loc ? 1 : 0) - (a.loc ? 1 : 0) || a.call.localeCompare(b.call, 'ko'));
+      findN = { total: findIdx.length, loc: [...located.keys()].length };
+    } catch(e) { findIdx = null;
+      document.getElementById('find-n').textContent = '장서목록을 불러오지 못했어요';
+      show('find'); return; }
+  }
+  document.getElementById('find-n').textContent = `${findN.total}권 (정확한 위치 확인 ${findN.loc}권)`;
+  renderFind('');
+  show('find');
+  document.getElementById('find-q').focus();
+}
+let findN = null;
+function renderFind(q) {
+  const norm = s => s.replace(/\s/g, '').toLowerCase();
+  const hits = findIdx.filter(b => !q || norm(b.call).includes(norm(q)) || norm(b.title).includes(norm(q)));
+  const el = document.getElementById('find-list'); el.innerHTML = '';
+  for (const b of hits.slice(0, 60)) {
+    const d = document.createElement('div');
+    d.className = 'p-3 flex justify-between items-center cursor-pointer active:bg-surface-variant/40';
+    d.innerHTML = `<div class="min-w-0"><div class="text-sm truncate">${b.title || '(제목 미상)'}</div>
+      <div class="font-mono-data text-xs text-on-surface-variant">${b.call} · ${b.sec} 서가</div></div>` +
+      (b.loc ? '<span class="shrink-0 text-[11px] bg-primary/20 text-primary rounded px-2 py-1">📍 바로 안내</span>'
+             : '<span class="shrink-0 text-[11px] bg-surface-variant/60 text-on-surface-variant rounded px-2 py-1">구간 안내</span>');
+    d.onclick = () => b.loc ? locate({ ...b, ...b.loc }) : guideSection(b);
+    el.appendChild(d);
+  }
+  if (!hits.length) el.innerHTML = '<div class="p-4 text-sm text-on-surface-variant">이 도서관 장서목록에 없는 책이에요</div>';
+}
+// 층·자료실은 장서 원본의 '자료실명' 필드에서 책마다 직접 읽는다 (예: "3층 종합자료실")
+// ── 대림도서관 층별 배치도 (공식 홈페이지 지도를 LibAR 디자인으로 옮김) ──
+// rooms: [라벨, x, y, w, h, 종류('room'=일반 'space'=부속 'core'=설비)] · icons: [기호, x, y]
+// 3F 등 나머지 층은 홈페이지 캡처 확보 후 같은 형식으로 추가
+const FLOORPLANS = {   // 공식 층별 안내 이미지(img_facility_floor_*.png)를 그대로 옮김
+  "4F": { outline: "M20,20 H340 V150 H250 V190 H180 V150 H20 Z",
+    rooms: [
+      ["사무실",        30,  28, 190, 52, "space"],
+      ["프로그램실1",    30,  84,  92, 58, "room"],
+      ["자유열람공간",   126,  84,  94, 58, "room"],
+      ["프로그램실2",    262,  84,  70, 58, "room"],
+      ["테라스",        184, 152,  64, 36, "space"],
+    ],
+    icons: [["EV", 236, 52], ["🚻", 306, 40], ["🪜", 240, 110]] },
+  "3F": { outline: "M6,22 H354 V186 H244 V214 H188 V186 H6 Z",
+    rooms: [
+      ["일반자료실",     12,  30, 180, 80, "room"],
+      ["도서정리실",     272,  94,  76, 32, "space"],
+      ["",             190, 150,  52, 34, "void"],
+    ],
+    icons: [["EV", 258, 60], ["🚻", 324, 40], ["🪜", 262, 110]] },
+  "2F": { outline: "M6,20 H354 V150 H180 V196 H90 V226 H6 Z",
+    rooms: [
+      ["어린이 유아자료", 12,  26, 184, 66, "room"],
+      ["휴게실&수유실",   284,  78,  66, 36, "room"],
+      ["테라스",         36, 158, 134, 30, "space"],
+    ],
+    icons: [["EV", 258, 52], ["🚻", 324, 36], ["🪜", 262, 100], ["🪜", 34, 208]] },
+  "1F": { outline: "M6,20 H354 V150 H180 V196 H90 V226 H6 Z",
+    rooms: [
+      ["개방형열람실",    12,  26, 158, 112, "room"],
+      ["",              12, 142,  48,  40, "void"],
+      ["",             288,  80,  26,  32, "void"],
+    ],
+    icons: [["EV", 258, 52], ["🚻", 324, 36], ["🪜", 262, 108], ["🪜", 34, 208]] },
+  "B1F": { outline: "M6,8 H354 V196 H90 V226 H6 Z",
+    rooms: [
+      ["조정실",        152,  12,  44, 22, "space"],
+      ["창고",          245,  12, 105, 22, "space"],
+      ["다목적실",       12,  38, 178, 56, "room"],
+      ["커뮤니티",       60, 112, 176, 32, "room"],
+      ["보존서고실",     286, 128,  64, 28, "room"],
+      ["",             288,  88,  26,  32, "void"],
+    ],
+    icons: [["EV", 258, 58], ["🪜", 262, 104], ["🪜", 34, 208]] },
+};
+// 지도 표기와 장서데이터 표기가 다른 방 (같은 공간)
+const ROOM_ALIAS = { "종합자료실": "일반자료실" };
+
+function drawFloor(fl, hlRoom) {
+  const svg = document.getElementById('g-map');
+  const plan = FLOORPLANS[fl];
+  // 층 탭 (홈페이지와 동일한 4F~B1F, LibAR 색)
+  const tabs = document.getElementById('g-tabs'); tabs.innerHTML = '';
+  for (const f of Object.keys(FLOORPLANS)) {
+    const b = document.createElement('button');
+    b.textContent = f;
+    b.className = 'px-2.5 py-1 rounded-md text-xs font-bold border ' +
+      (f === fl ? 'bg-primary/25 text-primary border-primary/50'
+                : FLOORPLANS[f] ? 'bg-surface-variant/40 text-on-surface-variant border-outline-variant'
+                                : 'opacity-35 border-outline-variant text-on-surface-variant');
+    if (FLOORPLANS[f]) b.onclick = () => drawFloor(f, hlRoom);
+    tabs.appendChild(b);
+  }
+  if (!plan) { svg.innerHTML = `<text x="180" y="125" text-anchor="middle" font-size="13" fill="#bccbb9">${fl} 배치도 준비 중</text>`; return; }
+  let s = `<path d="${plan.outline}" fill="#0b1326" stroke="#3d4a3d" stroke-width="2"/>`;
+  for (const [label, x, y, w, h, kind] of plan.rooms) {
+    if (kind === 'void') {   // 개방 상부·샤프트 (원본 지도의 X 박스)
+      s += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#3d4a3d"/>` +
+           `<line x1="${x}" y1="${y}" x2="${x+w}" y2="${y+h}" stroke="#3d4a3d"/>` +
+           `<line x1="${x+w}" y1="${y}" x2="${x}" y2="${y+h}" stroke="#3d4a3d"/>`;
+      continue;
+    }
+    const hl = label === hlRoom || label === ROOM_ALIAS[hlRoom];
+    const fill = hl ? 'rgba(75,226,119,.20)' : kind === 'room' ? '#1c2740' : '#131b2e';
+    const stroke = hl ? '#4be277' : '#3d4a3d';
+    const tcol = hl ? '#4be277' : kind === 'room' ? '#b9c8de' : '#869585';
+    s += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="${fill}" stroke="${stroke}"/>` +
+         `<text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-size="11" font-weight="600" fill="${tcol}">${label}</text>`;
+    if (hl) s += `<text x="${x+w/2}" y="${y-6}" text-anchor="middle" font-size="18">📍</text>` +
+                 `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="none" stroke="#4be277" stroke-width="2">
+                    <animate attributeName="opacity" values="1;.25;1" dur="1.6s" repeatCount="indefinite"/></rect>`;
+  }
+  for (const [ic, x, y] of plan.icons)
+    s += ic === 'EV'
+      ? `<rect x="${x-11}" y="${y-9}" width="22" height="18" rx="2" fill="#171f33" stroke="#3d4a3d"/><text x="${x}" y="${y+4}" text-anchor="middle" font-size="9" fill="#bccbb9">EV</text>`
+      : `<text x="${x}" y="${y+5}" text-anchor="middle" font-size="12">${ic}</text>`;
+  svg.innerHTML = s;
+}
+
+function guideSection(b) {
+  const room = b.room || '자료실';                       // 장서 원본의 자료실명 (예: "3층 종합자료실")
+  const fl = (room.match(/(B?\d)층/) || [,'?'])[1] + 'F';
+  document.getElementById('g-title').textContent = b.title || '(제목 미상)';
+  document.getElementById('g-call').textContent = b.call;
+  document.getElementById('g-floorchip').textContent = room;
+  document.getElementById('g-sec').textContent = `${b.sec} 서가로 가세요`;
+  drawFloor(fl, room.replace(/^B?\d층\s*/, ''));         // 해당 층 표시 — 배치도 미확보면 '준비 중' (다른 층 대체 표시 안 함)
+  show('guide');
+}
+document.getElementById('find-q').oninput = e => { if (findIdx) renderFind(e.target.value); };
+
+// ── 옵트인 크롭 수집 (서버 없는 1단계): 라벨 조각+정답을 zip으로 저장 → 팀 드라이브로 전달 ──
+// 사진 전체가 아니라 우표 크기 라벨 조각만 담는다. 정답(call)이 있으면 함께 — v4 학습쌍 후보.
+async function exportCrops() {
+  if (!lastImg || !lastRows) { alert('먼저 서가를 스캔해주세요 (사진 업로드 또는 판정 시연)'); return; }
+  if (!confirm('학습용 조각 제공에 동의하시나요?\n\n· 사진 전체가 아니라 책 라벨 조각만 담아요\n· 인식된 청구기호가 정답으로 함께 저장돼요\n· LibAR 인식률 개선에만 사용돼요')) return;
+  const zip = new JSZip(), manifest = [];
+  const c = document.createElement('canvas'), cx = c.getContext('2d');
+  let k = 0;
+  for (const r of lastRows) {
+    const [x0, y0, x1, y1] = r.box.map(Math.round);
+    const bw = Math.max(1, x1 - x0), bh = Math.max(1, y1 - y0);
+    c.width = bw; c.height = bh;
+    cx.drawImage(lastImg, x0, y0, bw, bh, 0, 0, bw, bh);
+    const name = `crop_${String(k).padStart(3, '0')}.jpg`;
+    zip.file(name, (await new Promise(res => c.toBlob(res, 'image/jpeg', .92))));
+    manifest.push({ file: name, call: r.call, how: r.how, box: [x0, y0, x1, y1] });
+    k++;
+  }
+  zip.file('manifest.json', JSON.stringify({ source: 'LibAR webdemo', date: new Date().toISOString(),
+    device: navigator.userAgent.slice(0, 60), crops: manifest }, null, 1));
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `libar_crops_${new Date().toISOString().slice(0, 10)}.zip`;
+  a.click();
+  document.getElementById('btn-crops').textContent = `✅ 조각 ${k}개 저장됨 — 팀 드라이브에 올려주세요`;
+}
+
+let lastLocate = null;
+async function locate(b) {
+  if (live) toggleLive();
+  document.getElementById('cam').classList.add('hidden');
+  show('scan');
+  const img = document.getElementById('photo');
+  try {
+    img.src = `demo/demo${b.demo}.jpg`;
+    await img.decode();
+    const rows = await (await fetch(`demo/demo${b.demo}.json`)).json();
+    lastImg = img; lastRows = rows; lastLocate = b;
+    locateRender(b);
+    fillSheet(img, rows);
+    setSheet(false);
+  } catch(e) { document.getElementById('scan-title').textContent = '서가 사진을 불러오지 못했어요'; }
+}
+function locateRender(b) {
+  const img = document.getElementById('photo');
+  document.getElementById('scan-title').textContent = `"${(b.title || b.call).slice(0, 14)}" 여기 있어요`;
+  // 대상 책만 강조, 나머지는 흐리게
+  const { s, ox, oy } = fitRect(img);
+  const ar = document.getElementById('ar'); ar.innerHTML = '';
+  const [x0, y0, x1, y1] = b.box;
+  const dim = document.createElement('div');
+  dim.style.cssText = 'position:absolute;inset:0;background:rgba(6,14,32,.55)';
+  ar.appendChild(dim);
+  const hl = document.createElement('div');
+  hl.style.cssText = `position:absolute;left:${x0*s+ox}px;top:${y0*s+oy}px;width:${(x1-x0)*s}px;height:${(y1-y0)*s}px;
+    border:3px solid #4be277;border-radius:3px;box-shadow:0 0 0 6px rgba(75,226,119,.25), 0 0 30px rgba(75,226,119,.5);animation:pulse-glow 1.5s infinite`;
+  const pin = document.createElement('div');
+  pin.textContent = '📍 ' + b.call;
+  pin.style.cssText = 'position:absolute;top:-34px;left:50%;transform:translateX(-50%);white-space:nowrap;background:#22c55e;color:#003915;font:700 12px Geist;padding:4px 8px;border-radius:8px';
+  hl.appendChild(pin);
+  ar.appendChild(hl);
+}
+</script>
+</body>
+</html>

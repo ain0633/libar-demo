@@ -1,0 +1,1624 @@
+[
+ {
+  "box": [
+   2,
+   23,
+   179,
+   552
+  ],
+  "band": 0,
+  "read": "66",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   4,
+   5,
+   303,
+   561
+  ],
+  "band": 0,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   55,
+   0,
+   303,
+   549
+  ],
+  "band": 0,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   59,
+   34,
+   309,
+   546
+  ],
+  "band": 0,
+  "read": "6.6",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   278,
+   -14,
+   550,
+   528
+  ],
+  "band": 0,
+  "read": "",
+  "call": null,
+  "title": "그니까 작사가 뭐냐면 : 작사와 썸타",
+  "how": null,
+  "score": 0.93
+ },
+ {
+  "box": [
+   299,
+   34,
+   544,
+   527
+  ],
+  "band": 0,
+  "read": "97",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   312,
+   47,
+   557,
+   530
+  ],
+  "band": 0,
+  "read": "673.193 노64파",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   397,
+   -20,
+   641,
+   532
+  ],
+  "band": 0,
+  "read": "03 673.90 미98ㅅ 683",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   495,
+   -20,
+   720,
+   526
+  ],
+  "band": 0,
+  "read": "673.5 김64ㅈ 6",
+  "call": "673.5-김64ㅈ",
+  "title": "지금 여기의 아이돌-아티스트",
+  "how": "청구기호",
+  "score": 1.0,
+  "mis": false
+ },
+ {
+  "box": [
+   604,
+   -21,
+   817,
+   524
+  ],
+  "band": 0,
+  "read": "673.5 신68ㄷ 6",
+  "call": null,
+  "title": "케이팝의 시간  : 서태지와 아이들부",
+  "how": null,
+  "score": 0.66
+ },
+ {
+  "box": [
+   723,
+   -16,
+   924,
+   517
+  ],
+  "band": 0,
+  "read": "673.673.5 오53아65ㅇ 63 6",
+  "call": "673.5-오53ㅂ",
+  "title": "방구석 뮤지션 자립 매뉴얼 : 인디 ",
+  "how": "청구기호",
+  "score": 0.75,
+  "mis": false
+ },
+ {
+  "box": [
+   826,
+   -7,
+   1004,
+   517
+  ],
+  "band": 0,
+  "read": "673.5 장16ㅇ 60 6",
+  "call": "673.5-장16ㅇ",
+  "title": "오늘부터 디제잉 = DJing : 국",
+  "how": "청구기호",
+  "score": 1.0,
+  "mis": false
+ },
+ {
+  "box": [
+   913,
+   -24,
+   1098,
+   527
+  ],
+  "band": 0,
+  "read": "673.5 피54",
+  "call": "673.5-피54ㄱ",
+  "title": "기이한 것과 으스스한 것",
+  "how": "청구기호",
+  "score": 0.86,
+  "mis": false
+ },
+ {
+  "box": [
+   977,
+   -21,
+   1160,
+   523
+  ],
+  "band": 0,
+  "read": "673.504 김17ㄷ 60 630",
+  "call": "673.504-김17ㄷ",
+  "title": "드랍 더 비트  = Drop the ",
+  "how": "청구기호",
+  "score": 1.0,
+  "mis": false
+ },
+ {
+  "box": [
+   1081,
+   3,
+   1263,
+   534
+  ],
+  "band": 0,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   1093,
+   -27,
+   1266,
+   525
+  ],
+  "band": 0,
+  "read": "673.5090 김38ㄱ 60",
+  "call": "673.5099-김38ㄱ",
+  "title": "김민기  = Kim Min-gi",
+  "how": "청구기호",
+  "score": 0.9,
+  "mis": false
+ },
+ {
+  "box": [
+   1284,
+   6,
+   1428,
+   541
+  ],
+  "band": 0,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   1293,
+   -14,
+   1427,
+   523
+  ],
+  "band": 0,
+  "read": "673.51 673.511 김34ㅂ 김34ㅂ 60",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   1469,
+   11,
+   1594,
+   538
+  ],
+  "band": 0,
+  "read": "673.511 김25ㅇ",
+  "call": "673.511-김25ㅇ",
+  "title": "인생, 한 곡 = 人生一曲 : 김동률",
+  "how": "청구기호",
+  "score": 1.0,
+  "mis": false
+ },
+ {
+  "box": [
+   1477,
+   -24,
+   1590,
+   522
+  ],
+  "band": 0,
+  "read": "630",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   2318,
+   12,
+   2443,
+   536
+  ],
+  "band": 0,
+  "read": "688 왕12ㅇ 60",
+  "call": "688-왕12ㅇ",
+  "title": "왕가위 : 영화에 매혹되는 순간",
+  "how": "청구기호",
+  "score": 1.0,
+  "mis": false
+ },
+ {
+  "box": [
+   2333,
+   -9,
+   2434,
+   516
+  ],
+  "band": 0,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   2446,
+   -24,
+   2582,
+   519
+  ],
+  "band": 0,
+  "read": "688 유66ㅇ 60",
+  "call": "688-유66ㅇ",
+  "title": "어쨌거나 밤은 무척 짧을 것이다 : ",
+  "how": "청구기호",
+  "score": 1.0,
+  "mis": false
+ },
+ {
+  "box": [
+   2514,
+   -13,
+   2654,
+   516
+  ],
+  "band": 0,
+  "read": "688 이94ㅇ 60",
+  "call": "688-이94ㅇ",
+  "title": "영화, 내 맘대로 봐도 괜찮을까? :",
+  "how": "청구기호",
+  "score": 1.0,
+  "mis": false
+ },
+ {
+  "box": [
+   2601,
+   -10,
+   2747,
+   515
+  ],
+  "band": 0,
+  "read": "688 688 파87 파878ㅇ 60 60",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.67
+ },
+ {
+  "box": [
+   2689,
+   -43,
+   2862,
+   523
+  ],
+  "band": 0,
+  "read": "630",
+  "call": null,
+  "title": "영화가 좋다 여행이 좋다  : 명작 ",
+  "how": null,
+  "score": 0.76
+ },
+ {
+  "box": [
+   2697,
+   -15,
+   2850,
+   517
+  ],
+  "band": 0,
+  "read": "688 윌297사 60",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   2792,
+   -40,
+   2982,
+   522
+  ],
+  "band": 0,
+  "read": "60",
+  "call": "688.04-유78ㅇ",
+  "title": "영화로 세상 보기 : 유지나의 시네 ",
+  "how": "제목복구",
+  "score": 0.75,
+  "mis": false
+ },
+ {
+  "box": [
+   2798,
+   -16,
+   2969,
+   517
+  ],
+  "band": 0,
+  "read": "번73ㅇ 688.01",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   2886,
+   -4,
+   3122,
+   531
+  ],
+  "band": 0,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   2896,
+   -16,
+   3105,
+   517
+  ],
+  "band": 0,
+  "read": "68.01 873ㅇ",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3072,
+   0,
+   3273,
+   509
+  ],
+  "band": 0,
+  "read": "H0162ㅌ 688.91 크292ㅇ 60 60",
+  "call": "688.01-크292ㅇ",
+  "title": "영화의 이론  : 물리적 현실의 구원",
+  "how": "청구기호",
+  "score": 0.9,
+  "mis": true
+ },
+ {
+  "box": [
+   3205,
+   -16,
+   3441,
+   522
+  ],
+  "band": 0,
+  "read": "688.18 찰17ㅍ2 60",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3291,
+   -21,
+   3541,
+   528
+  ],
+  "band": 0,
+  "read": "맥78ㅈ 60",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3372,
+   -20,
+   3647,
+   528
+  ],
+  "band": 0,
+  "read": "8010 778 6",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3379,
+   31,
+   3620,
+   519
+  ],
+  "band": 0,
+  "read": "8872ㅇ",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3494,
+   0,
+   3818,
+   534
+  ],
+  "band": 0,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3511,
+   -15,
+   3793,
+   529
+  ],
+  "band": 0,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3663,
+   -5,
+   3919,
+   520
+  ],
+  "band": 0,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3810,
+   -1,
+   4031,
+   531
+  ],
+  "band": 0,
+  "read": "860",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3834,
+   -9,
+   4029,
+   517
+  ],
+  "band": 0,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   203,
+   1650,
+   365,
+   1903
+  ],
+  "band": 1,
+  "read": "607DF3",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   259,
+   1648,
+   407,
+   1907
+  ],
+  "band": 1,
+  "read": "",
+  "call": null,
+  "title": "그니까 작사가 뭐냐면 : 작사와 썸타",
+  "how": null,
+  "score": 0.65
+ },
+ {
+  "box": [
+   284,
+   1639,
+   448,
+   1906
+  ],
+  "band": 1,
+  "read": "",
+  "call": null,
+  "title": "그니까 작사가 뭐냐면 : 작사와 썸타",
+  "how": null,
+  "score": 0.77
+ },
+ {
+  "box": [
+   332,
+   1635,
+   505,
+   1912
+  ],
+  "band": 1,
+  "read": "",
+  "call": "673.511-안64ㄱ",
+  "title": "그니까 작사가 뭐냐면 : 작사와 썸타",
+  "how": "제목복구",
+  "score": 1.0,
+  "mis": false
+ },
+ {
+  "box": [
+   386,
+   1627,
+   571,
+   1913
+  ],
+  "band": 1,
+  "read": "뭐나3 P98시8 25.0",
+  "call": null,
+  "title": "그니까 작사가 뭐냐면 : 작사와 썸타",
+  "how": null,
+  "score": 0.92
+ },
+ {
+  "box": [
+   467,
+   1629,
+   651,
+   1915
+  ],
+  "band": 1,
+  "read": "잉8.581",
+  "call": "673.511-태63ㅋ",
+  "title": "케이팝의 시간  : 서태지와 아이들부",
+  "how": "제목복구",
+  "score": 0.92,
+  "mis": false
+ },
+ {
+  "box": [
+   547,
+   1628,
+   719,
+   1912
+  ],
+  "band": 1,
+  "read": "83 므96ㅇ",
+  "call": null,
+  "title": "케이팝의 시간  : 서태지와 아이들부",
+  "how": null,
+  "score": 0.77
+ },
+ {
+  "box": [
+   605,
+   1628,
+   774,
+   1913
+  ],
+  "band": 1,
+  "read": "3760 66.55 양5.3",
+  "call": null,
+  "title": "케이팝의 시간  : 서태지와 아이들부",
+  "how": null,
+  "score": 0.75
+ },
+ {
+  "box": [
+   663,
+   1625,
+   822,
+   1915
+  ],
+  "band": 1,
+  "read": "73 부8사시8 바양너 43 95.515 6",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   713,
+   1620,
+   875,
+   1917
+  ],
+  "band": 1,
+  "read": " 88 6",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   748,
+   1616,
+   910,
+   1918
+  ],
+  "band": 1,
+  "read": "78ㅎ M55",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   777,
+   1610,
+   940,
+   1917
+  ],
+  "band": 1,
+  "read": "7우8이0 G5.56104 바548",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   836,
+   1607,
+   991,
+   1915
+  ],
+  "band": 1,
+  "read": "48 카버89 57882598 3",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   897,
+   1605,
+   1047,
+   1911
+  ],
+  "band": 1,
+  "read": "마8888 573.51 모74ㄱ",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   957,
+   1605,
+   1095,
+   1910
+  ],
+  "band": 1,
+  "read": "CG84F1S7000 67.3 .53 6",
+  "call": "673.53-류78ㅇ",
+  "title": "ECM 50 음악 속으로  : rec",
+  "how": "제목복구",
+  "score": 0.78,
+  "mis": false
+ },
+ {
+  "box": [
+   1000,
+   1566,
+   1169,
+   1914
+  ],
+  "band": 1,
+  "read": "양기8의 하보는매88우 얀8기 6",
+  "call": null,
+  "title": "ECM 50 음악 속으로  : rec",
+  "how": null,
+  "score": 0.73
+ },
+ {
+  "box": [
+   1016,
+   1599,
+   1160,
+   1910
+  ],
+  "band": 1,
+  "read": "드나지않는 8 875.53",
+  "call": null,
+  "title": "ECM 50 음악 속으로  : rec",
+  "how": null,
+  "score": 0.72
+ },
+ {
+  "box": [
+   1070,
+   1560,
+   1225,
+   1913
+  ],
+  "band": 1,
+  "read": "너41저8 6",
+  "call": null,
+  "title": "ECM 50 음악 속으로  : rec",
+  "how": null,
+  "score": 0.77
+ },
+ {
+  "box": [
+   1089,
+   1591,
+   1226,
+   1912
+  ],
+  "band": 1,
+  "read": "55.53 비64ㅂ",
+  "call": null,
+  "title": "ECM 50 음악 속으로  : rec",
+  "how": null,
+  "score": 0.71
+ },
+ {
+  "box": [
+   1145,
+   1591,
+   1274,
+   1912
+  ],
+  "band": 1,
+  "read": "전8 673.58 미78ㅇ 6 6",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   1203,
+   1545,
+   1361,
+   1914
+  ],
+  "band": 1,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   1218,
+   1584,
+   1355,
+   1909
+  ],
+  "band": 1,
+  "read": "셰68ㄷ.65 양60 673.58 G549 6",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   1305,
+   1546,
+   1445,
+   1915
+  ],
+  "band": 1,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   1317,
+   1586,
+   1435,
+   1912
+  ],
+  "band": 1,
+  "read": "6",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   1410,
+   1558,
+   1525,
+   1910
+  ],
+  "band": 1,
+  "read": "이L로토레스그8 시머세리지8아054세8 디8883 673.53 세292.0 6",
+  "call": "673.53-세292ㄷ",
+  "title": "더 랩 : 힙합의 시대",
+  "how": "청구기호",
+  "score": 0.89,
+  "mis": false
+ },
+ {
+  "box": [
+   1487,
+   1561,
+   1592,
+   1903
+  ],
+  "band": 1,
+  "read": "악여 9비0 873.53 S66ㅂ",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   1544,
+   1562,
+   1635,
+   1901
+  ],
+  "band": 1,
+  "read": "78지8·87큰8 573.53 애24ㅈ 6",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   1597,
+   1564,
+   1685,
+   1902
+  ],
+  "band": 1,
+  "read": "양스파85·90크63 673.53 968ㅋ",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   1602,
+   1603,
+   1679,
+   1898
+  ],
+  "band": 1,
+  "read": "드촐레이 티양일8양",
+  "call": "673.53-와68ㅋ",
+  "title": "콜드플레이",
+  "how": "제목복구",
+  "score": 1.0,
+  "mis": false
+ },
+ {
+  "box": [
+   1658,
+   1565,
+   1723,
+   1901
+  ],
+  "band": 1,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   1737,
+   1653,
+   1823,
+   2092
+  ],
+  "band": 1,
+  "read": "60N7 메탈리카:백투더프런트 673.53 터680 6",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   2213,
+   1547,
+   2300,
+   1896
+  ],
+  "band": 1,
+  "read": "라59 리94ㅇ 986.04 6",
+  "call": "688.04-김94ㅁ",
+  "title": "묘사하는 마음  : 김혜리 영화 산문",
+  "how": "제목복구",
+  "score": 0.88,
+  "mis": false
+ },
+ {
+  "box": [
+   2292,
+   1539,
+   2397,
+   1894
+  ],
+  "band": 1,
+  "read": "차8야 러94ㅇ 688.04 6.2 6",
+  "call": null,
+  "title": "묘사하는 마음  : 김혜리 영화 산문",
+  "how": null,
+  "score": 0.84
+ },
+ {
+  "box": [
+   2375,
+   1539,
+   2481,
+   1892
+  ],
+  "band": 1,
+  "read": "689.04 내68ㅆ 6",
+  "call": null,
+  "title": "묘사하는 마음  : 김혜리 영화 산문",
+  "how": null,
+  "score": 0.81
+ },
+ {
+  "box": [
+   2430,
+   1539,
+   2550,
+   1891
+  ],
+  "band": 1,
+  "read": "88883 686.08 튜192ㄴ 6",
+  "call": null,
+  "title": "남자 주인공에겐 없다 : 재미있는 영",
+  "how": null,
+  "score": 0.9
+ },
+ {
+  "box": [
+   2488,
+   1538,
+   2614,
+   1889
+  ],
+  "band": 1,
+  "read": "8 93 위792ㅇ 08 6",
+  "call": "688.04-듀192ㄴ",
+  "title": "남자 주인공에겐 없다 : 재미있는 영",
+  "how": "제목복구",
+  "score": 1.0,
+  "mis": false
+ },
+ {
+  "box": [
+   2574,
+   1545,
+   2698,
+   1890
+  ],
+  "band": 1,
+  "read": "6 6 6",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   2620,
+   1547,
+   2748,
+   1888
+  ],
+  "band": 1,
+  "read": "6",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   2666,
+   1551,
+   2798,
+   1886
+  ],
+  "band": 1,
+  "read": "660 894 3 04",
+  "call": "688.04-백57ㅇ",
+  "title": "영화가 좋다 여행이 좋다  : 명작 ",
+  "how": "제목복구",
+  "score": 0.9,
+  "mis": false
+ },
+ {
+  "box": [
+   2721,
+   1550,
+   2865,
+   1889
+  ],
+  "band": 1,
+  "read": "피9ㄱ 88ㅍ프8ㅍ 688 양95 3 6",
+  "call": null,
+  "title": "영화가 좋다 여행이 좋다  : 명작 ",
+  "how": null,
+  "score": 0.82
+ },
+ {
+  "box": [
+   2785,
+   1546,
+   2940,
+   1893
+  ],
+  "band": 1,
+  "read": "5양7 이88.94 6 6",
+  "call": "688.04-영95ㄹ",
+  "title": "영화로 읽는 도시 이야기",
+  "how": "제목복구",
+  "score": 0.78,
+  "mis": false
+ },
+ {
+  "box": [
+   2856,
+   1555,
+   3018,
+   1895
+  ],
+  "band": 1,
+  "read": "3 58 890ㅂ 890 6",
+  "call": null,
+  "title": "영화로 읽는 도시 이야기",
+  "how": null,
+  "score": 0.66
+ },
+ {
+  "box": [
+   2905,
+   1554,
+   3072,
+   1898
+  ],
+  "band": 1,
+  "read": "아스우8ㅎ 6",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   2983,
+   1554,
+   3149,
+   1898
+  ],
+  "band": 1,
+  "read": "19890요79 6",
+  "call": "688.04-윤93ㄴ",
+  "title": "나는 타인이다 : 詩에게 영화가 전하",
+  "how": "제목복구",
+  "score": 0.81,
+  "mis": false
+ },
+ {
+  "box": [
+   3042,
+   1592,
+   3197,
+   1894
+  ],
+  "band": 1,
+  "read": "프8으8",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3049,
+   1560,
+   3225,
+   1898
+  ],
+  "band": 1,
+  "read": "6",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3107,
+   1554,
+   3292,
+   1903
+  ],
+  "band": 1,
+  "read": "6",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3114,
+   1594,
+   3268,
+   1897
+  ],
+  "band": 1,
+  "read": "9710",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3166,
+   1556,
+   3349,
+   1902
+  ],
+  "band": 1,
+  "read": "743 6",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3234,
+   1598,
+   3402,
+   1895
+  ],
+  "band": 1,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3237,
+   1562,
+   3434,
+   1897
+  ],
+  "band": 1,
+  "read": "6",
+  "call": null,
+  "title": "깊은 밤의 영화관  : 각자의 상영관",
+  "how": null,
+  "score": 0.82
+ },
+ {
+  "box": [
+   3299,
+   1563,
+   3500,
+   1897
+  ],
+  "band": 1,
+  "read": "6",
+  "call": null,
+  "title": "깊은 밤의 영화관  : 각자의 상영관",
+  "how": null,
+  "score": 0.81
+ },
+ {
+  "box": [
+   3370,
+   1562,
+   3569,
+   1895
+  ],
+  "band": 1,
+  "read": "",
+  "call": null,
+  "title": "깊은 밤의 영화관  : 각자의 상영관",
+  "how": null,
+  "score": 0.89
+ },
+ {
+  "box": [
+   3375,
+   1605,
+   3547,
+   1889
+  ],
+  "band": 1,
+  "read": "",
+  "call": "688.04-이67ㄱ",
+  "title": "깊은 밤의 영화관  : 각자의 상영관",
+  "how": "제목복구",
+  "score": 0.91,
+  "mis": false
+ },
+ {
+  "box": [
+   3384,
+   1569,
+   3586,
+   1890
+  ],
+  "band": 1,
+  "read": "",
+  "call": null,
+  "title": "깊은 밤의 영화관  : 각자의 상영관",
+  "how": null,
+  "score": 0.89
+ },
+ {
+  "box": [
+   3456,
+   1576,
+   3625,
+   1891
+  ],
+  "band": 1,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3499,
+   1582,
+   3680,
+   1890
+  ],
+  "band": 1,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3581,
+   1579,
+   3755,
+   1891
+  ],
+  "band": 1,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3587,
+   1619,
+   3737,
+   1886
+  ],
+  "band": 1,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3665,
+   1587,
+   3832,
+   1887
+  ],
+  "band": 1,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   756,
+   2435,
+   884,
+   2625
+  ],
+  "band": 2,
+  "read": "60.",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   859,
+   2429,
+   983,
+   2621
+  ],
+  "band": 2,
+  "read": "",
+  "call": "673.53099-스38ㅇ",
+  "title": "M 트레인 : 센세이셔널한 예술가 패",
+  "how": "제목복구",
+  "score": 0.87,
+  "mis": false
+ },
+ {
+  "box": [
+   1003,
+   2425,
+   1132,
+   2621
+  ],
+  "band": 2,
+  "read": "",
+  "call": "673.53099-아48모",
+  "title": "아비치 공식 전기",
+  "how": "제목복구",
+  "score": 1.0,
+  "mis": false
+ },
+ {
+  "box": [
+   1080,
+   2424,
+   1198,
+   2618
+  ],
+  "band": 2,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   1161,
+   2428,
+   1272,
+   2615
+  ],
+  "band": 2,
+  "read": "  7070",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   1430,
+   2422,
+   1529,
+   2621
+  ],
+  "band": 2,
+  "read": "81888818888827ㄱ ",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   1600,
+   2402,
+   1687,
+   2598
+  ],
+  "band": 2,
+  "read": "우81브버1러19 63. 6",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   1635,
+   2402,
+   1721,
+   2598
+  ],
+  "band": 2,
+  "read": "미8408",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   1676,
+   2394,
+   1761,
+   2601
+  ],
+  "band": 2,
+  "read": "",
+  "call": "674.2-윤92ㅅ",
+  "title": "30일 밤의 뮤지컬  : 나만의 공간",
+  "how": "제목복구",
+  "score": 0.79,
+  "mis": false
+ },
+ {
+  "box": [
+   1742,
+   2387,
+   1820,
+   2605
+  ],
+  "band": 2,
+  "read": "338 미298미",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   2347,
+   2412,
+   2435,
+   2615
+  ],
+  "band": 2,
+  "read": "99모3요",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3040,
+   2425,
+   3173,
+   2619
+  ],
+  "band": 2,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ },
+ {
+  "box": [
+   3083,
+   2429,
+   3228,
+   2620
+  ],
+  "band": 2,
+  "read": "",
+  "call": null,
+  "title": null,
+  "how": null,
+  "score": 0.0
+ }
+]
