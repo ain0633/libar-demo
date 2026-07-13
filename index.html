@@ -302,6 +302,7 @@ function renderAll(img, rows, title) {
   drawBoxes(img, rows);
   fillSheet(img, rows);           // ← 결과가 즉시 하단 시트에 (페이지 이동 없음)
   setSheet(false);
+  bagCrops(img, rows);            // 조각 가방에 자동 누적 (제공은 버튼 눌러 동의할 때만)
   const nd = rows.filter(r => r.how === '청구기호').length, nt = rows.filter(r => r.how === '제목복구').length;
   document.getElementById('dev-info').innerHTML =
     `검출 call_label_yolo3 · ${backend} · ${lastMs.toFixed(0)}ms · 박스 ${rows.length}<br>` +
@@ -526,32 +527,43 @@ function guideSection(b) {
 }
 document.getElementById('find-q').oninput = e => { if (findIdx) renderFind(e.target.value); };
 
-// ── 옵트인 크롭 수집 (서버 없는 1단계): 라벨 조각+정답을 zip으로 저장 → 팀 드라이브로 전달 ──
-// 사진 전체가 아니라 우표 크기 라벨 조각만 담는다. 정답(call)이 있으면 함께 — v4 학습쌍 후보.
-async function exportCrops() {
-  if (!lastImg || !lastRows) { alert('먼저 서가를 스캔해주세요 (사진 업로드 또는 판정 시연)'); return; }
-  if (!confirm('학습용 조각 제공에 동의하시나요?\n\n· 사진 전체가 아니라 책 라벨 조각만 담아요\n· 인식된 청구기호가 정답으로 함께 저장돼요\n· LibAR 인식률 개선에만 사용돼요')) return;
-  const zip = new JSZip(), manifest = [];
+// ── 옵트인 크롭 수집 (서버 없는 1단계) ──
+// 스캔할 때마다 라벨 조각+정답을 '조각 가방'(메모리)에 자동 누적 → 마지막에 버튼 한 번으로
+// 전부 zip 저장 → 팀 드라이브에 전달. 사진 전체가 아니라 우표 크기 라벨 조각만 담는다.
+const cropBag = [];   // {blob, call, how, box, scan}
+let scanSeq = 0;
+async function bagCrops(img, rows) {
   const c = document.createElement('canvas'), cx = c.getContext('2d');
-  let k = 0;
-  for (const r of lastRows) {
+  const sid = ++scanSeq;
+  for (const r of rows) {
     const [x0, y0, x1, y1] = r.box.map(Math.round);
     const bw = Math.max(1, x1 - x0), bh = Math.max(1, y1 - y0);
     c.width = bw; c.height = bh;
-    cx.drawImage(lastImg, x0, y0, bw, bh, 0, 0, bw, bh);
-    const name = `crop_${String(k).padStart(3, '0')}.jpg`;
-    zip.file(name, (await new Promise(res => c.toBlob(res, 'image/jpeg', .92))));
-    manifest.push({ file: name, call: r.call, how: r.how, box: [x0, y0, x1, y1] });
-    k++;
+    cx.drawImage(img, x0, y0, bw, bh, 0, 0, bw, bh);
+    cropBag.push({ blob: await new Promise(res => c.toBlob(res, 'image/jpeg', .92)),
+                   call: r.call, how: r.how, box: [x0, y0, x1, y1], scan: sid });
   }
+  document.getElementById('btn-crops').textContent = `📦 학습용 조각 ${cropBag.length}개 제공 (동의)`;
+}
+async function exportCrops() {
+  if (!cropBag.length) { alert('먼저 서가를 스캔해주세요 (사진 업로드 또는 판정 시연)\n스캔할 때마다 조각이 자동으로 모입니다'); return; }
+  if (!confirm(`모인 라벨 조각 ${cropBag.length}개(스캔 ${scanSeq}건)를 제공하시겠어요?\n\n· 사진 전체가 아니라 책 라벨 조각만 담아요\n· 인식된 청구기호가 정답으로 함께 저장돼요\n· LibAR 인식률 개선에만 사용돼요`)) return;
+  const zip = new JSZip(), manifest = [];
+  cropBag.forEach((r, k) => {
+    const name = `crop_${String(k).padStart(4, '0')}.jpg`;
+    zip.file(name, r.blob);
+    manifest.push({ file: name, call: r.call, how: r.how, box: r.box, scan: r.scan });
+  });
   zip.file('manifest.json', JSON.stringify({ source: 'LibAR webdemo', date: new Date().toISOString(),
-    device: navigator.userAgent.slice(0, 60), crops: manifest }, null, 1));
+    device: navigator.userAgent.slice(0, 60), scans: scanSeq, crops: manifest }, null, 1));
   const blob = await zip.generateAsync({ type: 'blob' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `libar_crops_${new Date().toISOString().slice(0, 10)}.zip`;
   a.click();
-  document.getElementById('btn-crops').textContent = `✅ 조각 ${k}개 저장됨 — 팀 드라이브에 올려주세요`;
+  const n = cropBag.length;
+  cropBag.length = 0;
+  document.getElementById('btn-crops').textContent = `✅ 조각 ${n}개 저장됨 — 팀 드라이브에 올려주세요`;
 }
 
 let lastLocate = null;
