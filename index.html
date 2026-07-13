@@ -527,11 +527,13 @@ function guideSection(b) {
 }
 document.getElementById('find-q').oninput = e => { if (findIdx) renderFind(e.target.value); };
 
-// ── 옵트인 크롭 수집 (서버 없는 1단계) ──
-// 스캔할 때마다 라벨 조각+정답을 '조각 가방'(메모리)에 자동 누적 → 마지막에 버튼 한 번으로
-// 전부 zip 저장 → 팀 드라이브에 전달. 사진 전체가 아니라 우표 크기 라벨 조각만 담는다.
-const cropBag = [];   // {blob, call, how, box, scan}
-let scanSeq = 0;
+// ── 옵트인 크롭 수집: 동의 1회(기기에 기억) → 스캔마다 드라이브 수신함으로 자동 업로드 ──
+// UPLOAD_URL = Apps Script 웹앱(드라이브 수신함). 미설정·실패 시 zip 다운로드 폴백.
+const UPLOAD_URL = 'https://script.google.com/macros/s/AKfycbwd36Iufa0geew10kenSHKur7Nsf_UNhUhX-KgvpdtfPF-9Yy6vCI2m-u0FGQs93q-c6Q/exec';   // 팀 공유 드라이브 수신함 (Apps Script, curl+드라이브 검증 완료)
+const cropBag = [];      // {blob, call, how, box, scan} — 미동의 상태의 대기분
+let scanSeq = 0, sentN = 0;
+const optin = () => localStorage.getItem('libar_optin') === '1';
+
 async function bagCrops(img, rows) {
   const c = document.createElement('canvas'), cx = c.getContext('2d');
   const sid = ++scanSeq;
@@ -543,11 +545,11 @@ async function bagCrops(img, rows) {
     cropBag.push({ blob: await new Promise(res => c.toBlob(res, 'image/jpeg', .92)),
                    call: r.call, how: r.how, box: [x0, y0, x1, y1], scan: sid });
   }
-  document.getElementById('btn-crops').textContent = `📦 학습용 조각 ${cropBag.length}개 제공 (동의)`;
+  if (optin()) await flushBag();                       // 동의 상태면 즉시 자동 업로드
+  else document.getElementById('btn-crops').textContent = `📦 학습용 조각 ${cropBag.length}개 제공 (동의)`;
 }
-async function exportCrops() {
-  if (!cropBag.length) { alert('먼저 서가를 스캔해주세요 (사진 업로드 또는 판정 시연)\n스캔할 때마다 조각이 자동으로 모입니다'); return; }
-  if (!confirm(`모인 라벨 조각 ${cropBag.length}개(스캔 ${scanSeq}건)를 제공하시겠어요?\n\n· 사진 전체가 아니라 책 라벨 조각만 담아요\n· 인식된 청구기호가 정답으로 함께 저장돼요\n· LibAR 인식률 개선에만 사용돼요`)) return;
+
+async function buildZip() {
   const zip = new JSZip(), manifest = [];
   cropBag.forEach((r, k) => {
     const name = `crop_${String(k).padStart(4, '0')}.jpg`;
@@ -556,14 +558,41 @@ async function exportCrops() {
   });
   zip.file('manifest.json', JSON.stringify({ source: 'LibAR webdemo', date: new Date().toISOString(),
     device: navigator.userAgent.slice(0, 60), scans: scanSeq, crops: manifest }, null, 1));
-  const blob = await zip.generateAsync({ type: 'blob' });
+  return zip.generateAsync({ type: 'base64' });
+}
+
+async function flushBag() {
+  if (!cropBag.length) return;
+  const n = cropBag.length, b64zip = await buildZip();
+  if (UPLOAD_URL) {
+    try {                                              // Apps Script 수신함으로 자동 업로드
+      await fetch(UPLOAD_URL, { method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ name: `libar_crops_${Date.now()}.zip`, zip: b64zip }) });
+      cropBag.length = 0; sentN += n;
+      document.getElementById('btn-crops').textContent = `🔄 자동 제공 중 — ${sentN}개 전송됨 (끄기)`;
+      return;
+    } catch(e) { console.error('업로드 실패 — zip 폴백', e); }
+  }
+  // 폴백: zip 다운로드 (수신함 미설정 or 전송 실패)
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  a.href = 'data:application/zip;base64,' + b64zip;
   a.download = `libar_crops_${new Date().toISOString().slice(0, 10)}.zip`;
   a.click();
-  const n = cropBag.length;
-  cropBag.length = 0;
+  cropBag.length = 0; sentN += n;
   document.getElementById('btn-crops').textContent = `✅ 조각 ${n}개 저장됨 — 팀 드라이브에 올려주세요`;
+}
+
+async function exportCrops() {
+  if (optin()) {                                       // 동의 상태에서 다시 누르면 중지
+    localStorage.removeItem('libar_optin');
+    document.getElementById('btn-crops').textContent = '📦 학습용 조각 제공 (동의)';
+    return;
+  }
+  if (!cropBag.length && !scanSeq) { alert('먼저 서가를 스캔해주세요 (사진 업로드 또는 판정 시연)\n스캔할 때마다 조각이 자동으로 모입니다'); return; }
+  if (!confirm(`학습용 조각 제공에 동의하시나요? (현재 ${cropBag.length}개 대기)\n\n· 사진 전체가 아니라 책 라벨 조각만 담아요\n· 인식된 청구기호가 정답으로 함께 저장돼요\n· 동의하면 이후 스캔부터 자동으로 제공돼요 (버튼 다시 누르면 중지)`)) return;
+  localStorage.setItem('libar_optin', '1');
+  await flushBag();
 }
 
 let lastLocate = null;
