@@ -11,6 +11,21 @@
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/ort.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="libar_rec.js"></script><!-- 인식 로직 (match·LIS·줄분할·CTC) — node 골든 테스트와 공유 -->
+<script>
+// 현장 디버그 콘솔 (팀 요청): 주소 끝에 #debug → 미니 개발자도구(eruda) 활성화.
+// 폰 브라우저엔 F12가 없어 오류 스택·로그를 볼 수 없음 — 활성화 전 로그도 버퍼링해 보여줌.
+if (location.hash.includes('debug')) {
+  window.__logbuf = [];
+  for (const k of ['log', 'warn', 'error']) {
+    const orig = console[k].bind(console);
+    console[k] = (...a) => { window.__logbuf.push([k, a]); orig(...a); };
+  }
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/eruda@3/eruda.min.js';
+  s.onload = () => { eruda.init(); for (const [k, a] of window.__logbuf) console[k](...a); };
+  document.head.appendChild(s);
+}
+</script>
 <style>
   @keyframes pulse-glow { 0%{box-shadow:0 0 0 0 rgba(75,226,119,.4)} 70%{box-shadow:0 0 0 10px rgba(75,226,119,0)} 100%{box-shadow:0 0 0 0 rgba(75,226,119,0)} }
   .material-symbols-outlined { font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24; }
