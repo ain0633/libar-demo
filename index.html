@@ -7,8 +7,8 @@
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&family=Geist:wght@500;600&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
-<!-- webgpu 포함 번들 필수: 기본 ort.min.js는 webgpu 백엔드가 없어 조용히 WASM 강등됨 (헤드리스 디버깅으로 발견) -->
-<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.webgpu.min.js"></script>
+<!-- 1.27부터는 기본 번들에 webgpu 포함 (1.19.2는 사파리 WebGPU 출시 전 버전 — iOS 추론 실패 원인) -->
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/ort.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="libar_rec.js"></script><!-- 인식 로직 (match·LIS·줄분할·CTC) — node 골든 테스트와 공유 -->
 <style>
