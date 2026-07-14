@@ -60,8 +60,21 @@ function prepCatalog(cat) {
 }
 
 // ── match(txt) 이식 — 반환 [row|null, score] ──
+// 권차 수술(07-14): ①v.N 토큰이 분류번호-저자 사이에 끼면 인접 정규식이 끊김 → 매칭 전 제거
+// ②복본(v.1/v.2) 다의성은 권차로 판별(폴백 포함) ③첫 글자만 오독(상↔싱)은 나머지 완전일치 유일 인정
+// 재채점 실측: 걷기 판독률 89%→99% — daelim_yolo_pipeline.py match()와 동일해야 함
+function volPick(hits, txt) {
+  const mv = String(txt).match(/[vV]\.?(\d+)/);
+  if (mv) {
+    const re = new RegExp('^[vV]?\\.?0*' + mv[1] + '$');
+    const vhits = hits.filter(c => re.test(c.call.split('-').pop()));
+    if (vhits.length === 1) return vhits[0];
+  }
+  if (new Set(hits.map(c => c.call)).size === 1) return hits[0];
+  return null;
+}
 function matchCall(txt, idx) {
-  const t = recNn(txt);
+  const t = recNn(String(txt).replace(/[vV]\.?\d+/g, ' '));
   let m = null, sawCls = false;
   for (const m2 of t.matchAll(/(\d{3}(?:\.\d+)?)([가-힣][0-9]{1,3}[가-힣ㄱ-ㅎ0Oo]?)/g)) {
     sawCls = true;
@@ -77,6 +90,10 @@ function matchCall(txt, idx) {
       if (JAMO_FIX[a[a.length - 1]]) vs.add(a.slice(0, -1) + JAMO_FIX[a[a.length - 1]]);
       const hits = idx.items.filter(c => vs.has(c.author));
       if (hits.length === 1 && a.length >= 4) best = hits[0];
+      else if (hits.length > 1 && a.length >= 4) {
+        const p = volPick(hits, txt);
+        if (p) best = p;
+      }
     }
     // 분류번호가 읽혔는데 목록 밖 번호인 경우: 오독(673.5090↔673.5099)은 살리고
     // 남의 구간(004↔813)은 차단 — 매칭 책의 분류번호가 읽힌 번호와 닮아야(≥0.7) 인정.
@@ -92,16 +109,16 @@ function matchCall(txt, idx) {
     variants.add(author.slice(0, -1) + JAMO_FIX[author[author.length - 1]]);
   const hits = cands.filter(c => variants.has(c.author));
   if (hits.length > 1) {
-    const mv = String(txt).match(/[vV]\.?(\d+)/);
-    if (mv) {
-      const re = new RegExp('^[vV]?\\.?0*' + mv[1] + '$');
-      const vhits = hits.filter(c => re.test(c.call.split('-').pop()));
-      if (vhits.length === 1) return [vhits[0], 1.0];
-    }
-    if (new Set(hits.map(c => c.call)).size === 1) return [hits[0], 1.0];
-    return [null, 1.0];
+    const p = volPick(hits, txt);
+    return p ? [p, 1.0] : [null, 1.0];
   }
   if (hits.length === 1) return [hits[0], 1.0];
+  const h3 = cands.filter(c => c.author.length === author.length &&
+    c.author.slice(1) === author.slice(1) && c.author.slice(0, 1) !== author.slice(0, 1));
+  if (new Set(h3.map(c => c.author)).size === 1) {
+    const p = h3.length > 1 ? volPick(h3, txt) : h3[0];
+    if (p) return [p, 0.95];
+  }
   const digitOk = c => {
     const da = author.replace(/\D/g, ''), dc = c.author.replace(/\D/g, '');
     return !(da.length === dc.length && da !== dc);
