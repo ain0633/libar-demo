@@ -153,6 +153,8 @@ tailwind.config = { darkMode:"class", theme:{ extend:{
       <button onclick="loadDemo(1)" class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-on-surface-variant">샘플 서가·광각</button>
       <button onclick="loadDemo(2)" class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-on-surface-variant">샘플 서가·각도</button>
     </div>
+    <button onclick="toggleCollect()" id="btn-collect"
+            class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-[10px] text-on-surface-variant">📦 수집 모드 (팀용)</button>
     <button onclick="exportCrops()" id="btn-crops"
             class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-[10px] text-on-surface-variant">📦 학습용 조각 제공 (동의)</button>
     <div id="upbar" class="hidden w-40 h-1 rounded-full bg-surface-variant/50 overflow-hidden">
@@ -209,7 +211,22 @@ function show(v) { document.querySelectorAll('.view').forEach(e => e.classList.r
   document.getElementById('view-' + v).classList.add('active');
   if (v === 'home') { findTarget = null; liveFound = null; } }   // 홈 복귀 = 도서찾기 대상 해제
 // 서가 점검·길안내에서 진입 시 카메라 자동 시작 (사진 업로드·샘플 서가는 부가 기능)
-function enterScan() { show('scan'); ensureRec(); if (!live) toggleLive(); }
+function enterScan() { show('scan'); if (!collectMode) ensureRec(); if (!live) toggleLive(); }
+
+// ── 수집 모드 (팀용): 인식(40~50초) 생략, 검출→조각 저장→전송만 — 데이터 수집 걸음 속도에 최적화 ──
+// 조각의 정답(GT)은 전체 장서 엑셀 도착 후 소급 부여. URL #collect로 켠 채 시작 가능.
+let collectMode = false;
+function toggleCollect() {
+  collectMode = !collectMode;
+  const b = document.getElementById('btn-collect');
+  b.textContent = collectMode ? '📦 수집 모드 켜짐 — 인식 생략' : '📦 수집 모드 (팀용)';
+  b.classList.toggle('text-primary', collectMode);
+  b.classList.toggle('border-primary/50', collectMode);
+  document.getElementById('scan-title').textContent = collectMode
+    ? '📦 수집 모드 — 서가를 비추면 자동으로 조각을 모아요' : '사진을 선택하세요';
+  if (collectMode && !optin()) exportCrops();          // 전송 동의부터 (이미 동의면 통과)
+}
+if (location.hash.includes('collect')) addEventListener('load', () => { if (!collectMode) toggleCollect(); });
 
 // 바텀시트 접기/펼치기
 const sheet = document.getElementById('sheet');
@@ -402,6 +419,10 @@ async function recognizeAll(img, rows, onMsg) {
 let scanning = false;                                  // 판독 20~30초 — 중복 실행 시 결과 뒤섞임 방지
 async function scanOnce(img, title) {
   const rows = await detect(img);
+  if (collectMode) {                                   // 수집 모드: 인식 생략 — 검출 즉시 조각 저장·전송
+    renderAll(img, rows, `📦 조각 ${rows.length}개 수집 — 바로 다음 사진 찍으셔도 돼요`);
+    return;
+  }
   renderAll(img, rows, `${title} — 청구기호를 읽는 중…`, false);
   const okRec = await recognizeAll(img, rows, m => document.getElementById('scan-title').textContent = m);
   const nOk = rows.filter(r => r.call && !r.mis).length, nMis = rows.filter(r => r.mis).length;
@@ -610,14 +631,25 @@ async function toggleLive(analyze = true) {
     drawBoxes(cam, rows);
     n++; tSum += lastMs;
     document.getElementById('scan-title').textContent =
-      readMsg || `📚 책 ${rows.length}권 보임 — 겨누고 있으면 자동으로 읽어요`;
+      readMsg || (collectMode ? `📦 수집 모드 — 책 ${rows.length}권 보임`
+                              : `📚 책 ${rows.length}권 보임 — 겨누고 있으면 자동으로 읽어요`);
     document.getElementById('c-gray').textContent = rows.length;
     document.getElementById('dev-info').innerHTML =
       `라이브 검출 ${(1000/(tSum/n)).toFixed(1)} FPS · ${lastMs.toFixed(0)}ms/프레임 · ${backend}`;
     // ── 자동 판독: 화면이 안정되면(박스 수 유지) 그 프레임을 그 자리에서 판독 — 일시정지 불필요 ──
     const stable = prevN >= 0 && Math.abs(rows.length - prevN) <= Math.max(2, rows.length * 0.2);
     prevN = rows.length;
-    if (stable && rows.length >= 5 && !scanning && Date.now() - lastRead > 12000) {
+    if (collectMode) {                                 // 수집 모드: 인식 없이 4초마다 조각 저장·전송
+      if (stable && rows.length >= 3 && !scanning && Date.now() - lastRead > 4000) {
+        scanning = true;
+        try {
+          await bagCrops(fc, rows);
+          readMsg = `📦 전송 ${sentN}개${cropBag.length ? ` · 대기 ${cropBag.length}개` : ''} — 옆 칸으로 이동해도 돼요`;
+          setTimeout(() => readMsg = '', 4000);
+        } catch(e) { console.error('수집 실패', e); }
+        finally { scanning = false; lastRead = Date.now(); }
+      }
+    } else if (stable && rows.length >= 5 && !scanning && Date.now() - lastRead > 12000) {
       scanning = true;
       try {
         const okRec = await recognizeAll(fc, rows, m => { readMsg = `🔍 ${m} — 카메라는 계속 비춰도 돼요`;
@@ -651,6 +683,7 @@ async function toggleLive(analyze = true) {
     }
     await new Promise(r => setTimeout(r, 30));       // UI 숨쉴 틈
   }
+  if (collectMode && optin()) flushBag();            // 라이브 종료: 배치 문턱(24개) 미달 잔여분 마저 전송
   // 주의: 여기서 #ar를 비우면 안 됨 — 데모/사진 전환이 이미 새 박스를 그린 뒤일 수 있음 (레이스)
 }
 
@@ -845,7 +878,8 @@ async function bagCrops(img, rows) {
     cropBag.push({ blob: await new Promise(res => c.toBlob(res, 'image/jpeg', .92)),
                    call: r.call, how: r.how, box: [x0, y0, x1, y1], scan: sid });
   }
-  if (optin()) await flushBag();                       // 동의 상태면 즉시 자동 업로드
+  // 동의 상태면 자동 업로드 — 수집 모드는 4초 주기라 24개 이상 모아 배치 전송 (드라이브 잘게 쌓임 방지)
+  if (optin()) { if (!collectMode || cropBag.length >= 24) await flushBag(); }
   else document.getElementById('btn-crops').textContent = `📦 학습용 조각 ${cropBag.length}개 제공 (동의)`;
 }
 
