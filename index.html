@@ -202,7 +202,8 @@ const SZ = 1280, CONF = 0.25;
 let sess = null, lastRows = null, lastImg = null, lastMs = 0, expanded = false;
 
 function show(v) { document.querySelectorAll('.view').forEach(e => e.classList.remove('active'));
-  document.getElementById('view-' + v).classList.add('active'); }
+  document.getElementById('view-' + v).classList.add('active');
+  if (v === 'home') { findTarget = null; liveFound = null; } }   // 홈 복귀 = 도서찾기 대상 해제
 // 서가 점검·길안내에서 진입 시 카메라 자동 시작 (사진 업로드·샘플 서가는 부가 기능)
 function enterScan() { show('scan'); ensureRec(); if (!live) toggleLive(); }
 
@@ -400,8 +401,10 @@ async function scanOnce(img, title) {
   renderAll(img, rows, `${title} — 청구기호를 읽는 중…`, false);
   const okRec = await recognizeAll(img, rows, m => document.getElementById('scan-title').textContent = m);
   const nOk = rows.filter(r => r.call && !r.mis).length, nMis = rows.filter(r => r.mis).length;
-  renderAll(img, rows, okRec ? `${title} — ${nOk}권 확인${nMis ? ` · ${nMis}권 의심` : ''}`
-                             : `${title} — 책 ${rows.length}권 (인식 모델 로드 실패)`);
+  const tgt = okRec && findTarget && rows.find(r => r.call === findTarget.call);
+  renderAll(img, rows, !okRec ? `${title} — 책 ${rows.length}권 (인식 모델 로드 실패)`
+    : tgt ? `📍 찾는 책이 여기 있어요! · ${nOk}권 확인`
+          : `${title} — ${nOk}권 확인${nMis ? ` · ${nMis}권 의심` : ''}`);
 }
 async function scanImage(img, title) {
   if (scanning) { document.getElementById('scan-title').textContent = '판독 중이에요 — 잠시만요'; return; }
@@ -435,7 +438,20 @@ function fitRect(el) {
   return { s, ox: (vw - W * s) / 2, oy: (vh - H * s) / 2 };
 }
 
-// AR 오버레이 (사진 위 실좌표 박스)
+// AR 오버레이 (사진 위 실좌표 박스) — 도서찾기 대상 책은 📍핀으로 강조
+let findTarget = null;                                 // {call, title} — 길안내에서 설정
+let liveFound = null;                                  // 라이브 자동 판독에서 찾은 위치 {box, until}
+function targetPin(ar, box, s, ox, oy, call) {
+  const [x0, y0, x1, y1] = box;
+  const hl = document.createElement('div');
+  hl.style.cssText = `position:absolute;left:${x0*s+ox}px;top:${y0*s+oy}px;width:${(x1-x0)*s}px;height:${(y1-y0)*s}px;
+    border:3px solid #4be277;border-radius:3px;box-shadow:0 0 0 6px rgba(75,226,119,.25), 0 0 30px rgba(75,226,119,.5);animation:pulse-glow 1.5s infinite`;
+  const pin = document.createElement('div');
+  pin.textContent = '📍 ' + call;
+  pin.style.cssText = 'position:absolute;top:-34px;left:50%;transform:translateX(-50%);white-space:nowrap;background:#22c55e;color:#003915;font:700 12px Geist;padding:4px 8px;border-radius:8px';
+  hl.appendChild(pin);
+  ar.appendChild(hl);
+}
 function drawBoxes(img, rows) {
   const { s, ox, oy } = fitRect(img);
   const ar = document.getElementById('ar'); ar.innerHTML = '';
@@ -447,6 +463,13 @@ function drawBoxes(img, rows) {
     else if (r.call || r.live) { d.style.border = '2px solid rgba(75,226,119,.85)'; d.style.background = 'rgba(75,226,119,.12)'; }
     else { d.style.border = '1px solid rgba(134,149,133,.55)'; d.style.background = 'rgba(45,52,73,.22)'; }
     ar.appendChild(d);
+  }
+  if (findTarget) {                                    // 정지 화면: 판독 결과에서 찾는 책 짚기
+    const hit = rows.find(r => r.call === findTarget.call);
+    if (hit) targetPin(ar, hit.box, s, ox, oy, findTarget.call);
+    // 라이브: 직전 자동 판독에서 본 위치를 잠시 유지 (사용자가 카메라를 크게 안 움직였다는 가정)
+    else if (liveFound && Date.now() < liveFound.until)
+      targetPin(ar, liveFound.box, s, ox, oy, findTarget.call);
   }
 }
 
@@ -595,8 +618,15 @@ async function toggleLive(analyze = true) {
           const nOk = rows.filter(r => r.call && !r.mis).length, nMis = rows.filter(r => r.mis).length;
           fillSheet(fc, rows);                       // 썸네일은 판독 시점 프레임에서
           bagCrops(fc, rows);
-          readMsg = `이 줄 ${nOk}권 확인${nMis ? ` · ${nMis}권 의심` : ''} — 다른 칸을 비추면 이어서 읽어요`;
-          setTimeout(() => readMsg = '', 6000);      // 잠시 보여주고 라이브 안내로 복귀
+          const tgt = findTarget && rows.find(r => r.call === findTarget.call);
+          if (tgt) {                                 // 도서찾기 대상 발견 — 다음 프레임부터 📍핀 유지
+            liveFound = { box: tgt.box, until: Date.now() + 10000 };
+            readMsg = `📍 찾는 책이 여기 있어요! — ${(findTarget.title || findTarget.call).slice(0, 14)}`;
+            setTimeout(() => readMsg = '', 10000);
+          } else {
+            readMsg = `이 줄 ${nOk}권 확인${nMis ? ` · ${nMis}권 의심` : ''} — 다른 칸을 비추면 이어서 읽어요`;
+            setTimeout(() => readMsg = '', 6000);    // 잠시 보여주고 라이브 안내로 복귀
+          }
         }
       } catch(e) {
         console.error('자동 판독 실패', e);
@@ -776,6 +806,7 @@ function guideSection(b) {
   document.getElementById('g-floorchip').textContent = room;
   document.getElementById('g-sec').textContent = `${b.sec} 서가로 가세요`;
   drawFloor(fl, room.replace(/^B?\d층\s*/, ''));         // 해당 층 표시 — 배치도 미확보면 '준비 중' (다른 층 대체 표시 안 함)
+  findTarget = { call: b.call, title: b.title };         // 서가 스캔에서 이 책을 찾으면 📍 강조
   show('guide');
 }
 document.getElementById('find-q').oninput = e => { if (findIdx) renderFind(e.target.value); };
