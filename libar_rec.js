@@ -62,8 +62,9 @@ function prepCatalog(cat) {
 // ── match(txt) 이식 — 반환 [row|null, score] ──
 function matchCall(txt, idx) {
   const t = recNn(txt);
-  let m = null;
+  let m = null, sawCls = false;
   for (const m2 of t.matchAll(/(\d{3}(?:\.\d+)?)([가-힣][0-9]{1,3}[가-힣ㄱ-ㅎ0Oo]?)/g)) {
+    sawCls = true;
     if (idx.byCls[m2[1]]) { m = m2; break; }
   }
   let clsv, author, cands;
@@ -76,6 +77,13 @@ function matchCall(txt, idx) {
       if (JAMO_FIX[a[a.length - 1]]) vs.add(a.slice(0, -1) + JAMO_FIX[a[a.length - 1]]);
       const hits = idx.items.filter(c => vs.has(c.author));
       if (hits.length === 1 && a.length >= 4) best = hits[0];
+    }
+    // 분류번호가 읽혔는데 목록 밖 번호인 경우: 오독(673.5090↔673.5099)은 살리고
+    // 남의 구간(004↔813)은 차단 — 매칭 책의 분류번호가 읽힌 번호와 닮아야(≥0.7) 인정.
+    // (현장 07-14: 000번대 서가에서 저자기호 단독 매칭이 '확인 5권' 오탐 — 파이프라인과 의도적 분기)
+    if (best && sawCls) {
+      const clsToks = [...t.matchAll(/\d{3}(?:\.\d+)?/g)].map(x => x[0]);
+      if (!clsToks.some(ct => smRatio(ct, best.cls) >= 0.7)) best = null;
     }
     return best ? [best, 0.9] : [null, 0.0];
   }
