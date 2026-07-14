@@ -484,6 +484,7 @@ function thumb(img, box, w = 72) {
 }
 
 // ▼ 실시간 결과 시트 채우기 — 화면 전환 없음
+function tsrc(img, r, w) { return r.thumbData || thumb(img, r.box, w); }   // 누적분은 저장된 썸네일
 function fillSheet(img, rows) {
   const ok = rows.filter(r => r.call && !r.mis), mis = rows.filter(r => r.mis), gray = rows.filter(r => !r.call);
   document.getElementById('c-ok').textContent = ok.length;
@@ -496,7 +497,7 @@ function fillSheet(img, rows) {
   for (const r of mis) {
     lm.insertAdjacentHTML('beforeend',
       `<div class="flex items-center gap-3 bg-error/10 border border-error/40 rounded-xl p-2.5">
-        <img src="${thumb(img, r.box, 56)}" class="w-10 rounded border border-error/50">
+        <img src="${tsrc(img, r, 56)}" class="w-10 rounded border border-error/50">
         <div class="flex-1"><div class="font-mono-data text-sm font-semibold">${r.call}</div>
         <div class="text-[11px] text-on-surface-variant">${r.title || ''}</div>
         <div class="text-[11px] text-error font-semibold">${r.guide || '제자리가 아니에요'}</div></div>
@@ -506,12 +507,12 @@ function fillSheet(img, rows) {
   for (const r of ok) {
     lo.insertAdjacentHTML('beforeend',
       `<div class="flex items-center gap-2 bg-surface-container border border-outline-variant rounded-lg p-2">
-        <img src="${thumb(img, r.box, 48)}" class="w-8 rounded">
+        <img src="${tsrc(img, r, 48)}" class="w-8 rounded">
         <div class="min-w-0"><div class="font-mono-data text-[11px] font-semibold truncate">${r.call}</div>
         <div class="text-[10px] text-on-surface-variant truncate">${r.title || ''}</div></div></div>`);
   }
   const lg = document.getElementById('list-gray'); lg.innerHTML = '';
-  for (const r of gray.slice(0, 36)) lg.insertAdjacentHTML('beforeend', `<img src="${thumb(img, r.box, 40)}" class="w-9 rounded opacity-70 border border-outline-variant">`);
+  for (const r of gray.slice(0, 36)) lg.insertAdjacentHTML('beforeend', `<img src="${tsrc(img, r, 40)}" class="w-9 rounded opacity-70 border border-outline-variant">`);
   if (gray.length > 36) lg.insertAdjacentHTML('beforeend', `<span class="text-[11px] text-on-surface-variant self-center">+${gray.length - 36}권</span>`);
 }
 
@@ -548,6 +549,8 @@ function renderAll(img, rows, title, bag = true) {
 
 // ── 라이브 모드: 카메라 스트림 위 실시간 검출 루프 ──
 let live = false, stream = null;
+const sessionBooks = new Map();            // 라이브 세션 누적: call → {call,title,mis,thumbData}
+                                           // 프레임당 6~10권을 투표 합산으로 증폭 (걷기 스캔 메커니즘)
 async function toggleLive(analyze = true) {
   const cam = document.getElementById('cam'), photo = document.getElementById('photo'),
         btn = document.getElementById('btn-live');
@@ -579,6 +582,7 @@ async function toggleLive(analyze = true) {
   cam.classList.remove('hidden'); photo.removeAttribute('src');
   btn.textContent = '⏸ 일시정지'; live = true;
   setSheet(false);
+  sessionBooks.clear();                              // 새 라이브 세션 = 누적 초기화
   // 라이브 시작: 이전 사진/데모의 시트 잔상 제거
   for (const id of ['c-ok', 'c-mis']) document.getElementById(id).textContent = '0';
   for (const id of ['list-mis', 'list-ok', 'list-gray']) document.getElementById(id).innerHTML = '';
@@ -615,16 +619,24 @@ async function toggleLive(analyze = true) {
         const okRec = await recognizeAll(fc, rows, m => { readMsg = `🔍 ${m} — 카메라는 계속 비춰도 돼요`;
           document.getElementById('scan-title').textContent = readMsg; });
         if (okRec && live) {
-          const nOk = rows.filter(r => r.call && !r.mis).length, nMis = rows.filter(r => r.mis).length;
-          fillSheet(fc, rows);                       // 썸네일은 판독 시점 프레임에서
+          let nNew = 0;                              // 프레임 투표 합산: 세션에 누적 (덮어쓰기 금지)
+          for (const r of rows) if (r.call) {
+            if (!sessionBooks.has(r.call)) nNew++;
+            sessionBooks.set(r.call, { call: r.call, title: r.title, mis: !!r.mis,
+                                       thumbData: thumb(fc, r.box, 56) });
+          }
+          const merged = [...sessionBooks.values()].concat(rows.filter(r => !r.call));
+          fillSheet(fc, merged);
           bagCrops(fc, rows);
+          const nMis = [...sessionBooks.values()].filter(b => b.mis).length;
           const tgt = findTarget && rows.find(r => r.call === findTarget.call);
           if (tgt) {                                 // 도서찾기 대상 발견 — 다음 프레임부터 📍핀 유지
             liveFound = { box: tgt.box, until: Date.now() + 10000 };
             readMsg = `📍 찾는 책이 여기 있어요! — ${(findTarget.title || findTarget.call).slice(0, 14)}`;
             setTimeout(() => readMsg = '', 10000);
           } else {
-            readMsg = `이 줄 ${nOk}권 확인${nMis ? ` · ${nMis}권 의심` : ''} — 다른 칸을 비추면 이어서 읽어요`;
+            readMsg = `누적 ${sessionBooks.size}권 확인 (+${nNew})${nMis ? ` · ${nMis}권 의심` : ''}`
+              + ' — 계속 비추거나 옆 칸으로';
             setTimeout(() => readMsg = '', 6000);    // 잠시 보여주고 라이브 안내로 복귀
           }
         }
