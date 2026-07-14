@@ -427,7 +427,8 @@ addEventListener('unhandledrejection', e => {
     t.textContent = `오류가 발생했어요 (${String(e.reason).slice(0, 80)})`;
 });
 
-function dims(el) { return { W: el.videoWidth || el.naturalWidth, H: el.videoHeight || el.naturalHeight }; }
+function dims(el) { return { W: el.videoWidth || el.naturalWidth || el.width,
+                             H: el.videoHeight || el.naturalHeight || el.height }; }
 function fitRect(el) {
   const vw = innerWidth, vh = innerHeight, { W, H } = dims(el);
   const s = Math.min(vw / W, vh / H);
@@ -559,11 +560,14 @@ async function toggleLive(analyze = true) {
   for (const id of ['c-ok', 'c-mis']) document.getElementById(id).textContent = '0';
   for (const id of ['list-mis', 'list-ok', 'list-gray']) document.getElementById(id).innerHTML = '';
   document.getElementById('sec-mis').classList.add('hidden');
-  let n = 0, tSum = 0;
+  let n = 0, tSum = 0, prevN = -1, lastRead = 0, readMsg = '';
   while (live) {                                     // 직렬 루프: 추론 끝나는 대로 다음 프레임
     if (!cam.videoWidth) break;                      // 일시정지 직후 죽은 스트림 가드 (0 나누기 방지)
+    // 프레임을 먼저 캔버스로 고정 — 검출과 자동 판독이 같은 순간을 본다
+    const fc = mkCanvas(cam.videoWidth, cam.videoHeight);
+    fc.getContext('2d').drawImage(cam, 0, 0);
     let rows;
-    try { rows = await detect(cam); }
+    try { rows = await detect(fc); }
     catch(e) {                                       // WebGPU 추론 실패 기기 → WASM 재구축 후 계속
       console.error('라이브 검출 실패', e);
       if (backend === 'WebGPU' && !rebuilt && await rebuildWasm()) continue;
@@ -574,10 +578,31 @@ async function toggleLive(analyze = true) {
     rows.forEach(r => r.live = true);
     drawBoxes(cam, rows);
     n++; tSum += lastMs;
-    document.getElementById('scan-title').textContent = `📚 책 ${rows.length}권 보임 — 천천히 움직여주세요`;
+    document.getElementById('scan-title').textContent =
+      readMsg || `📚 책 ${rows.length}권 보임 — 겨누고 있으면 자동으로 읽어요`;
     document.getElementById('c-gray').textContent = rows.length;
     document.getElementById('dev-info').innerHTML =
       `라이브 검출 ${(1000/(tSum/n)).toFixed(1)} FPS · ${lastMs.toFixed(0)}ms/프레임 · ${backend}`;
+    // ── 자동 판독: 화면이 안정되면(박스 수 유지) 그 프레임을 그 자리에서 판독 — 일시정지 불필요 ──
+    const stable = prevN >= 0 && Math.abs(rows.length - prevN) <= Math.max(2, rows.length * 0.2);
+    prevN = rows.length;
+    if (stable && rows.length >= 5 && !scanning && Date.now() - lastRead > 12000) {
+      scanning = true;
+      try {
+        const okRec = await recognizeAll(fc, rows, m => { readMsg = `🔍 ${m} — 카메라는 계속 비춰도 돼요`;
+          document.getElementById('scan-title').textContent = readMsg; });
+        if (okRec && live) {
+          const nOk = rows.filter(r => r.call && !r.mis).length, nMis = rows.filter(r => r.mis).length;
+          fillSheet(fc, rows);                       // 썸네일은 판독 시점 프레임에서
+          bagCrops(fc, rows);
+          readMsg = `이 줄 ${nOk}권 확인${nMis ? ` · ${nMis}권 의심` : ''} — 다른 칸을 비추면 이어서 읽어요`;
+          setTimeout(() => readMsg = '', 6000);      // 잠시 보여주고 라이브 안내로 복귀
+        }
+      } catch(e) {
+        console.error('자동 판독 실패', e);
+        if ((backend === 'WebGPU' || recBackend === 'WebGPU') && !rebuilt) await rebuildWasm();
+      } finally { scanning = false; lastRead = Date.now(); }
+    }
     await new Promise(r => setTimeout(r, 30));       // UI 숨쉴 틈
   }
   // 주의: 여기서 #ar를 비우면 안 됨 — 데모/사진 전환이 이미 새 박스를 그린 뒤일 수 있음 (레이스)
