@@ -323,7 +323,7 @@ async function ensureRec(onMsg) {
 }
 
 // ── 온디바이스 인식 (파이프라인 스트립 구조 이식): 밴드 스트립 → ×3 업스케일 → 1280 청크
-//    → det(DB)로 텍스트 줄 검출 → rec → 토큰 x배정 + 클러스터 채널 → 1,860권 대조 → LIS 판정 ──
+//    → det(DB)로 텍스트 줄 검출 → rec → 토큰 x배정 + 클러스터 채널 → 전 장서 대조 → LIS 판정 ──
 async function recLine(cnv, sx, sy, sw, sh) {
   const tw = Math.min(320, Math.max(8, Math.ceil(48 * sw / sh)));
   const rc = mkCanvas(320, 48), rg = rc.getContext('2d', { willReadFrequently: true });
@@ -569,7 +569,7 @@ function renderAll(img, rows, title, bag = true) {
   document.getElementById('dev-info').innerHTML =
     `검출 call_label_yolo3 · ${backend} · ${lastMs.toFixed(0)}ms · 박스 ${rows.length}<br>` +
     `인식 rec_v4 fp16 (${recBackend}) · 줄 ${lastRecN}개 ${(lastRecMs/1000).toFixed(1)}s · 직독 ${nd}<br>` +
-    `대조 1,860권 카탈로그 · 판정 행별 LIS — 전 과정 온디바이스`;
+    `대조 ${_catRaw ? _catRaw.length.toLocaleString() : '…'}권 카탈로그 · 판정 행별 LIS — 전 과정 온디바이스`;
 }
 
 // ── 라이브 모드: 카메라 스트림 위 실시간 검출 루프 ──
@@ -726,7 +726,7 @@ async function openFind() {
         const rows = await (await fetch(`demo/demo${n}.json`)).json();
         for (const r of rows) if (r.call && !located.has(r.call)) located.set(r.call, { demo: n, box: r.box });
       }
-      // 전체 장서목록 (1,860권) — 위치 확인 여부 표시
+      // 전체 장서목록 (종합자료실 전 장서) — 위치 확인 여부 표시
       const cat = await loadCatalogRaw();
       findIdx = cat.map(c => ({ ...c, loc: located.get(c.call) || null }));
       findIdx.sort((a, b) => (b.loc ? 1 : 0) - (a.loc ? 1 : 0) || a.call.localeCompare(b.call, 'ko'));
