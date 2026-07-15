@@ -541,13 +541,17 @@ function fillSheet(img, rows) {
   if (gray.length > 36) lg.insertAdjacentHTML('beforeend', `<span class="text-[11px] text-on-surface-variant self-center">+${gray.length - 36}권</span>`);
 }
 
+// 검출 입력 캔버스·텐서는 재사용 — 프레임마다 26MB(캔버스 6.6+imageData 6.6+텐서 19.7 중 일부)씩
+// 새로 만들면 GC가 라이브 화면을 멈칫거리게 한다 (detect는 항상 직렬 호출이라 재사용 안전)
+let _detCnv = null, _detX = null;
 async function detect(img) {
   const { W, H } = dims(img); const r = SZ / Math.max(W, H);
-  const off = mkCanvas(SZ, SZ), ox = off.getContext('2d');
+  if (!_detCnv) { _detCnv = mkCanvas(SZ, SZ); _detX = new Float32Array(3 * SZ * SZ); }
+  const ox = _detCnv.getContext('2d', { willReadFrequently: true });
   ox.fillStyle = 'rgb(114,114,114)'; ox.fillRect(0, 0, SZ, SZ);
   ox.drawImage(img, 0, 0, W * r, H * r);
   const px = ox.getImageData(0, 0, SZ, SZ).data;
-  const x = new Float32Array(3 * SZ * SZ);
+  const x = _detX;
   for (let i = 0, n = SZ * SZ; i < n; i++) { x[i] = px[i*4]/255; x[n+i] = px[i*4+1]/255; x[2*n+i] = px[i*4+2]/255; }
   const t0 = performance.now();
   const out = await sess.run({ images: new ort.Tensor('float32', x, [1, 3, SZ, SZ]) });
@@ -612,11 +616,13 @@ async function toggleLive(analyze = true) {
   for (const id of ['c-ok', 'c-mis']) document.getElementById(id).textContent = '0';
   for (const id of ['list-mis', 'list-ok', 'list-gray']) document.getElementById(id).innerHTML = '';
   document.getElementById('sec-mis').classList.add('hidden');
-  let n = 0, tSum = 0, prevN = -1, lastRead = 0, readMsg = '';
+  let n = 0, tSum = 0, prevN = -1, lastRead = 0, readMsg = '', fc = null;
   while (live) {                                     // 직렬 루프: 추론 끝나는 대로 다음 프레임
     if (!cam.videoWidth) break;                      // 일시정지 직후 죽은 스트림 가드 (0 나누기 방지)
-    // 프레임을 먼저 캔버스로 고정 — 검출과 자동 판독이 같은 순간을 본다
-    const fc = mkCanvas(cam.videoWidth, cam.videoHeight);
+    const tFrame = performance.now();
+    // 프레임을 먼저 캔버스로 고정 — 검출과 자동 판독이 같은 순간을 본다 (캔버스는 재사용: GC 버벅임 방지)
+    if (!fc || fc.width !== cam.videoWidth || fc.height !== cam.videoHeight)
+      fc = mkCanvas(cam.videoWidth, cam.videoHeight);
     fc.getContext('2d').drawImage(cam, 0, 0);
     let rows;
     try { rows = await detect(fc); }
@@ -681,7 +687,10 @@ async function toggleLive(analyze = true) {
         if ((backend === 'WebGPU' || recBackend === 'WebGPU') && !rebuilt) await rebuildWasm();
       } finally { scanning = false; lastRead = Date.now(); }
     }
-    await new Promise(r => setTimeout(r, 30));       // UI 숨쉴 틈
+    // 검출 페이싱: 연속 풀가동은 폰을 몇 분 만에 발열 한계로 몰아 서멀 스로틀링을 부른다 —
+    // 프레임 간격에 바닥을 깔아 가동률을 낮춘다 (표시 체감 무손실, 수집 모드는 4초 저장이라 더 낮게)
+    const pace = (collectMode ? 500 : 280) - (performance.now() - tFrame);
+    await new Promise(r => setTimeout(r, Math.max(30, pace)));
   }
   if (collectMode && optin()) flushBag();            // 라이브 종료: 배치 문턱(24개) 미달 잔여분 마저 전송
   // 주의: 여기서 #ar를 비우면 안 됨 — 데모/사진 전환이 이미 새 박스를 그린 뒤일 수 있음 (레이스)
