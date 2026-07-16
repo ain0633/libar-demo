@@ -619,6 +619,10 @@ async function toggleLive(analyze = true) {
   let n = 0, tSum = 0, prevN = -1, lastRead = 0, readMsg = '', fc = null;
   while (live) {                                     // 직렬 루프: 추론 끝나는 대로 다음 프레임
     if (!cam.videoWidth) break;                      // 일시정지 직후 죽은 스트림 가드 (0 나누기 방지)
+    if (!sess) {                                     // 첫 방문: 검출 모델(9.8MB) 다운로드가 카메라보다 늦다 — 준비될 때까지 대기
+      document.getElementById('scan-title').textContent = '검출 모델 준비 중… 잠시만요';
+      await new Promise(r => setTimeout(r, 300)); continue;
+    }
     const tFrame = performance.now();
     // 프레임을 먼저 캔버스로 고정 — 검출과 자동 판독이 같은 순간을 본다 (캔버스는 재사용: GC 버벅임 방지)
     if (!fc || fc.width !== cam.videoWidth || fc.height !== cam.videoHeight)
