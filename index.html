@@ -595,6 +595,49 @@ addEventListener('orientationchange', async () => {
 });
 const sessionBooks = new Map();            // 라이브 세션 누적: call → {call,title,mis,thumbData}
                                            // 프레임당 6~10권을 투표 합산으로 증폭 (걷기 스캔 메커니즘)
+// ── A안: 고해상 원샷 — 판독 순간만 최대 픽셀 확보 (1080p 라벨 20~40px가 직독 병목) ──
+// ①ImageCapture.takePhoto(안드로이드, 진짜 고해상) ②스트림 해상도 순간 승격→캡처→원복(iOS 경로)
+// ③둘 다 실패면 현재 프레임 그대로 = 기존 동작 — 어느 단이 잡혔는지 dev-info에 표시
+let _hiCnv = null, _hiInfo = '';
+async function hiShot(fallback) {
+  const track = stream?.getVideoTracks?.()[0];
+  const fw = fallback.width;
+  const grab = (src, w, h) => {
+    if (!_hiCnv) _hiCnv = mkCanvas(w, h);
+    _hiCnv.width = w; _hiCnv.height = h;
+    _hiCnv.getContext('2d').drawImage(src, 0, 0, w, h);
+    return _hiCnv;
+  };
+  if (track && window.ImageCapture) {
+    try {
+      const ic = new ImageCapture(track);
+      const cap = await ic.getPhotoCapabilities().catch(() => null);
+      const opt = cap?.imageWidth?.max ? { imageWidth: Math.min(cap.imageWidth.max, 4096) } : {};
+      const bmp = await createImageBitmap(await ic.takePhoto(opt), { imageOrientation: 'from-image' });
+      // 세로로 회전돼 온 사진은 책이 90° 누워 검출 전멸 — 방향이 같고 실제로 클 때만 채택
+      const ok = (bmp.width > bmp.height) === (fallback.width > fallback.height) && bmp.width > fw;
+      const c = ok ? grab(bmp, bmp.width, bmp.height) : null;
+      bmp.close();
+      if (c) { _hiInfo = `원샷 ${c.width}×${c.height} 📷`; return c; }
+    } catch(e) {}
+  }
+  if (track) {
+    try {                                              // 해상도 순간 승격 (미지원 기기는 무변화 통과)
+      const cam = document.getElementById('cam');
+      await track.applyConstraints({ width: { ideal: 4096 }, height: { ideal: 3072 } });
+      await new Promise(r => setTimeout(r, 350));      // 스트림 재협상 대기
+      let c = null;
+      if (live && cam.videoWidth > fw) {
+        c = grab(cam, cam.videoWidth, cam.videoHeight);
+        _hiInfo = `원샷 ${c.width}×${c.height} ⬆`;
+      }
+      await track.applyConstraints({ width: { ideal: 1920 } }).catch(() => {});
+      if (c) return c;
+    } catch(e) {}
+  }
+  _hiInfo = '';
+  return fallback;
+}
 async function toggleLive(analyze = true) {
   const cam = document.getElementById('cam'), photo = document.getElementById('photo'),
         btn = document.getElementById('btn-live');
@@ -665,7 +708,7 @@ async function toggleLive(analyze = true) {
                               : `📚 책 ${rows.length}권 보임 — 겨누고 있으면 자동으로 읽어요`);
     document.getElementById('c-gray').textContent = rows.length;
     document.getElementById('dev-info').innerHTML =
-      `라이브 검출 ${(1000/(tSum/n)).toFixed(1)} FPS · ${lastMs.toFixed(0)}ms/프레임 · ${backend} · ${cam.videoWidth}×${cam.videoHeight}`;
+      `라이브 검출 ${(1000/(tSum/n)).toFixed(1)} FPS · ${lastMs.toFixed(0)}ms/프레임 · ${backend} · ${cam.videoWidth}×${cam.videoHeight}${_hiInfo ? ' · ' + _hiInfo : ''}`;
     // ── 자동 판독: 화면이 안정되면(박스 수 유지) 그 프레임을 그 자리에서 판독 — 일시정지 불필요 ──
     const stable = prevN >= 0 && Math.abs(rows.length - prevN) <= Math.max(2, rows.length * 0.2);
     prevN = rows.length;
@@ -682,23 +725,27 @@ async function toggleLive(analyze = true) {
     } else if (stable && rows.length >= 5 && !scanning && Date.now() - lastRead > 12000) {
       scanning = true;
       try {
-        const okRec = await recognizeAll(fc, rows, m => { readMsg = `🔍 ${m} — 카메라는 계속 비춰도 돼요`;
+        // A안: 판독 순간만 고해상 원샷 — 실패 시 hi === fc(현재 프레임)라 기존 동작과 동일
+        const hi = await hiShot(fc);
+        const hrows = hi === fc ? rows : await detect(hi, 1280);
+        const okRec = await recognizeAll(hi, hrows, m => { readMsg = `🔍 ${m} — 카메라는 계속 비춰도 돼요`;
           document.getElementById('scan-title').textContent = readMsg; });
         if (okRec && live && gen === liveGen) {
           let nNew = 0;                              // 프레임 투표 합산: 세션에 누적 (덮어쓰기 금지)
-          for (const r of rows) if (r.call) {
+          for (const r of hrows) if (r.call) {
             if (!sessionBooks.has(r.call)) nNew++;
             sessionBooks.set(r.call, { call: r.call, title: r.title, mis: !!r.mis,
-                                       thumbData: thumb(fc, r.box, 56) });
+                                       thumbData: thumb(hi, r.box, 56) });
           }
-          const merged = [...sessionBooks.values()].concat(rows.filter(r => !r.call));
-          fillSheet(fc, merged);
-          bagCrops(fc, rows);
-          snapReport(fc, rows);                      // 리포트 재료: fc는 프레임마다 재사용되므로 복사 저장
+          const merged = [...sessionBooks.values()].concat(hrows.filter(r => !r.call));
+          fillSheet(hi, merged);
+          bagCrops(hi, hrows);
+          snapReport(hi, hrows);                     // 리포트 재료: 원샷/프레임 복사 저장
           const nMis = [...sessionBooks.values()].filter(b => b.mis).length;
-          const tgt = findTarget && rows.find(r => r.call === findTarget.call);
-          if (tgt) {                                 // 도서찾기 대상 발견 — 다음 프레임부터 📍핀 유지
-            liveFound = { box: tgt.box, until: Date.now() + 10000 };
+          const tgt = findTarget && hrows.find(r => r.call === findTarget.call);
+          if (tgt) {                                 // 도서찾기 대상 발견 — 📍핀은 카메라 표시 좌표로 환산
+            const ps = cam.videoWidth / dims(hi).W;
+            liveFound = { box: tgt.box.map(v => v * ps), until: Date.now() + 10000 };
             readMsg = `📍 찾는 책이 여기 있어요! — ${(findTarget.title || findTarget.call).slice(0, 14)}`;
             setTimeout(() => readMsg = '', 10000);
           } else {
