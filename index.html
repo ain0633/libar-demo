@@ -981,15 +981,19 @@ async function exportCrops() {
 let _repFrame = null, _repRows = null;
 function snapReport(img, rows) {
   const { W, H } = dims(img);
-  const c = mkCanvas(W, H); c.getContext('2d').drawImage(img, 0, 0);
-  _repFrame = c;
-  _repRows = rows.map(r => ({ box: r.box, call: r.call, mis: !!r.mis, title: r.title, guide: r.guide }));
+  const s = Math.min(1, 1600 / W);       // 12MP 원본을 그대로 들고 있으면 ~47MB 상주 — 축소 복사로 메모리 방어
+  const c = mkCanvas(Math.round(W * s), Math.round(H * s));
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  _repFrame = c;                         // 박스도 스냅샷 좌표계로 함께 축소
+  _repRows = rows.map(r => ({ box: r.box.map(v => v * s), call: r.call, mis: !!r.mis, title: r.title, guide: r.guide }));
 }
 async function buildReport() {
+  // 스냅샷을 지역으로 고정 — 합성 도중(await 사이) 라이브 자동 판독이 갈아끼워도 프레임이 안 섞이게
+  const frame = _repFrame, repRows = _repRows;
   // 목록: 라이브면 세션 누적(투표 합산 전체), 사진이면 그 판독 결과
-  const books = sessionBooks.size ? [...sessionBooks.values()] : _repRows.filter(r => r.call);
+  const books = sessionBooks.size ? [...sessionBooks.values()] : repRows.filter(r => r.call);
   const ok = books.filter(b => !b.mis).length, mis = books.filter(b => b.mis);
-  const W = 1080, head = 96, ih = Math.round(_repFrame.height * W / _repFrame.width);
+  const W = 1080, head = 96, ih = Math.round(frame.height * W / frame.width);
   const rowH = 76, listH = mis.length ? 48 + mis.length * rowH : 0, foot = 44;
   const c = mkCanvas(W, head + ih + listH + foot), x = c.getContext('2d');
   x.fillStyle = '#141a14'; x.fillRect(0, 0, c.width, c.height);
@@ -1001,9 +1005,9 @@ async function buildReport() {
   x.fillStyle = '#4be277'; x.fillText(`확인 ${ok}권`, W - 24, 44);
   x.fillStyle = mis.length ? '#ff6b64' : '#7a8a78'; x.fillText(`잘못 꽂힘 ${mis.length}권`, W - 24, 76);
   x.textAlign = 'left';
-  x.drawImage(_repFrame, 0, head, W, ih);
-  const s = W / _repFrame.width;
-  for (const r of _repRows) {
+  x.drawImage(frame, 0, head, W, ih);
+  const s = W / frame.width;
+  for (const r of repRows) {
     const [x0, y0, x1, y1] = r.box;
     x.strokeStyle = r.mis ? '#ff6b64' : r.call ? '#4be277' : 'rgba(150,160,150,.6)';
     x.lineWidth = r.mis ? 4 : r.call ? 3 : 1;
@@ -1014,10 +1018,10 @@ async function buildReport() {
     x.fillStyle = '#ff6b64'; x.font = 'bold 24px sans-serif';
     x.fillText('❗ 잘못 꽂힌 책', 24, y + 34); y += 48;
     for (const b of mis) {
-      const src = _repRows.find(r => r.call === b.call);      // 현재 프레임에 있으면 원본에서 크롭
+      const src = repRows.find(r => r.call === b.call);       // 현재 프레임에 있으면 원본에서 크롭
       if (src) {
         const [x0, y0, x1, y1] = src.box.map(Math.round);
-        x.drawImage(_repFrame, x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0), 24, y + 8, 44, 60);
+        x.drawImage(frame, x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0), 24, y + 8, 44, 60);
       } else if (b.thumbData) {                               // 지나간 프레임 책은 저장된 썸네일
         const im = new Image(); im.src = b.thumbData;
         await im.decode().catch(() => {});
