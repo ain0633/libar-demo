@@ -581,7 +581,7 @@ function renderAll(img, rows, title, bag = true) {
 // ── 라이브 모드: 카메라 스트림 위 실시간 검출 루프 ──
 // liveGen = 루프 세대 토큰: 정지→즉시 재시작(회전 등) 때 옛 루프가 live=true를 다시 보고
 // 계속 도는 레이스 차단 — 루프 두 개가 겹치면 같은 버퍼·세션을 동시에 두드려 먹통이 된다
-let live = false, stream = null, _rotRestart = false, liveGen = 0;
+let live = false, stream = null, _rotRestart = false, liveGen = 0, _liveDone = Promise.resolve();
 // iOS: 폰을 가로로 돌려도 기존 스트림은 시작 시점 방향으로 남는다 → 프레임 속 책이 90° 누워
 // 검출 전멸. 회전이 감지되면 카메라를 새 방향으로 재획득 (세션 누적은 유지)
 addEventListener('orientationchange', async () => {
@@ -630,6 +630,9 @@ async function toggleLive(analyze = true) {
   for (const id of ['list-mis', 'list-ok', 'list-gray']) document.getElementById(id).innerHTML = '';
   document.getElementById('sec-mis').classList.add('hidden');
   const gen = ++liveGen;                             // 이 루프의 세대 — 불일치 = 내가 낡은 루프
+  await _liveDone.catch(() => {});                   // 이전 루프의 마지막 추론까지 완전 종료 대기
+  if (gen !== liveGen) return;                       //   (세대 토큰은 다음 확인 시점에야 멈춤 —
+  _liveDone = (async () => {                         //    날아가던 추론과의 겹침은 직렬화로만 차단)
   let n = 0, tSum = 0, prevN = -1, lastRead = 0, readMsg = '', fc = null;
   while (live && gen === liveGen) {                                     // 직렬 루프: 추론 끝나는 대로 다음 프레임
     if (!cam.videoWidth) break;                      // 일시정지 직후 죽은 스트림 가드 (0 나누기 방지)
@@ -711,6 +714,7 @@ async function toggleLive(analyze = true) {
     await new Promise(r => setTimeout(r, Math.max(30, pace)));
   }
   if (collectMode && optin()) flushBag();            // 라이브 종료: 배치 문턱(24개) 미달 잔여분 마저 전송
+  })();
   // 주의: 여기서 #ar를 비우면 안 됨 — 데모/사진 전환이 이미 새 박스를 그린 뒤일 수 있음 (레이스)
 }
 

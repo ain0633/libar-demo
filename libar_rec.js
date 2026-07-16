@@ -99,7 +99,9 @@ function matchCall(txt, idx) {
     // 남의 구간(004↔813)은 차단 — 매칭 책의 분류번호가 읽힌 번호와 닮아야(≥0.7) 인정.
     // (현장 07-14: 000번대 서가에서 저자기호 단독 매칭이 '확인 5권' 오탐 — 파이프라인과 의도적 분기)
     if (best && sawCls) {
-      const clsToks = [...t.matchAll(/\d{3}(?:\.\d+)?/g)].map(x => x[0]);
+      // 토큰 추출은 원문(공백 보존)에서 — 정규화로 공백이 빠지면 이웃 쓰레기 숫자와 붙어
+      // '…큰8 573.53'이 '857…'로 오파싱돼 정당한 오독 구제(573.53→673.53)까지 기각된다
+      const clsToks = [...String(txt).matchAll(/\d{3}(?:\.\d+)?/g)].map(x => x[0]);
       if (!clsToks.some(ct => smRatio(ct, best.cls) >= 0.7)) best = null;
     }
     return best ? [best, 0.9] : [null, 0.0];
