@@ -543,18 +543,20 @@ function fillSheet(img, rows) {
 
 // 검출 입력 캔버스·텐서는 재사용 — 프레임마다 26MB(캔버스 6.6+imageData 6.6+텐서 19.7 중 일부)씩
 // 새로 만들면 GC가 라이브 화면을 멈칫거리게 한다 (detect는 항상 직렬 호출이라 재사용 안전)
-let _detCnv = null, _detX = null;
-async function detect(img) {
-  const { W, H } = dims(img); const r = SZ / Math.max(W, H);
-  if (!_detCnv) { _detCnv = mkCanvas(SZ, SZ); _detX = new Float32Array(3 * SZ * SZ); }
-  const ox = _detCnv.getContext('2d', { willReadFrequently: true });
-  ox.fillStyle = 'rgb(114,114,114)'; ox.fillRect(0, 0, SZ, SZ);
+// 모델은 동적 입력: 라이브 프레임(1080p)은 960이면 박스 98% 유지에 ~5배 빠름(발열 인하),
+// 12MP 사진은 1280 유지(960은 -16% 손실 실측) — sz 인자로 경로별 선택
+const _det = {};                                       // sz → {cnv, x} 캐시
+async function detect(img, sz = SZ) {
+  const { W, H } = dims(img); const r = sz / Math.max(W, H);
+  if (!_det[sz]) _det[sz] = { cnv: mkCanvas(sz, sz), x: new Float32Array(3 * sz * sz) };
+  const ox = _det[sz].cnv.getContext('2d', { willReadFrequently: true });
+  ox.fillStyle = 'rgb(114,114,114)'; ox.fillRect(0, 0, sz, sz);
   ox.drawImage(img, 0, 0, W * r, H * r);
-  const px = ox.getImageData(0, 0, SZ, SZ).data;
-  const x = _detX;
-  for (let i = 0, n = SZ * SZ; i < n; i++) { x[i] = px[i*4]/255; x[n+i] = px[i*4+1]/255; x[2*n+i] = px[i*4+2]/255; }
+  const px = ox.getImageData(0, 0, sz, sz).data;
+  const x = _det[sz].x;
+  for (let i = 0, n = sz * sz; i < n; i++) { x[i] = px[i*4]/255; x[n+i] = px[i*4+1]/255; x[2*n+i] = px[i*4+2]/255; }
   const t0 = performance.now();
-  const out = await sess.run({ images: new ort.Tensor('float32', x, [1, 3, SZ, SZ]) });
+  const out = await sess.run({ images: new ort.Tensor('float32', x, [1, 3, sz, sz]) });
   lastMs = performance.now() - t0;
   const d = out[Object.keys(out)[0]].data, rows = [];
   for (let i = 0; i < d.length; i += 6)
@@ -629,7 +631,7 @@ async function toggleLive(analyze = true) {
       fc = mkCanvas(cam.videoWidth, cam.videoHeight);
     fc.getContext('2d').drawImage(cam, 0, 0);
     let rows;
-    try { rows = await detect(fc); }
+    try { rows = await detect(fc, 960); }
     catch(e) {                                       // WebGPU 추론 실패 기기 → WASM 재구축 후 계속
       console.error('라이브 검출 실패', e);
       if (backend === 'WebGPU' && !rebuilt && await rebuildWasm()) continue;
