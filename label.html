@@ -99,22 +99,25 @@ function hits(q) {
     if (toks.every(ts => ts.some(t => hay.includes(t)))) { out.push(b); if (out.length >= 8) break; }
   }
   el.innerHTML = out.map(b => `<button onclick="pick('${b.call.replace(/'/g, "\\'")}')"><b style="font-family:monospace;color:#7ef09a">${b.call}</b> <small style="color:#9fb39c">${(b.title || '').slice(0, 24)}</small></button>`).join('');
-  // 장서목록 밖 책(제적·타실 등)도 서가엔 실존 — 라벨을 읽을 수 있으면 그대로가 정답이다
-  if (!out.length && /\d/.test(q)) {
-    const direct = q.replace(/\s+/g, '-');
-    // 0건이면 오타 가능성부터 — 한두 글자 차이 근사 추천 (모27ㅋ→모57ㅋ 사례)
+  if (!/\d/.test(q)) return;
+  const direct = q.replace(/\s+/g, '-');
+  // 0건이면 오타 가능성부터 — 한두 글자 차이 근사 추천 (모27ㅋ→모57ㅋ 사례)
+  if (!out.length) {
     const near = [];
     for (const b of cat) {
       const d = editDist(direct, b.call.toLowerCase(), 3);
       if (d <= 2) { near.push([d, b]); if (near.length >= 40) break; }
     }
     near.sort((x, y) => x[0] - y[0]);
-    el.innerHTML = (near.length ? `<div style="font-size:12px;color:#9fb39c;padding:4px 2px">혹시 이 책인가요?</div>` +
-      near.slice(0, 3).map(([, b]) => `<button onclick="pick('${b.call.replace(/'/g, "\\'")}')"><b style="font-family:monospace;color:#7ef09a">${b.call}</b> <small style="color:#9fb39c">${(b.title || '').slice(0, 24)}</small></button>`).join('') : '') +
-      `<button onclick="pick('${direct.replace(/'/g, "\\'")}')">✍ 목록에 없는 책 — 라벨에 적힌 그대로 입력:
+    if (near.length) el.innerHTML += `<div style="font-size:12px;color:#9fb39c;padding:4px 2px">혹시 이 책인가요?</div>` +
+      near.slice(0, 3).map(([, b]) => `<button onclick="pick('${b.call.replace(/'/g, "\\'")}')"><b style="font-family:monospace;color:#7ef09a">${b.call}</b> <small style="color:#9fb39c">${(b.title || '').slice(0, 24)}</small></button>`).join('');
+  }
+  // 직접 입력은 항상 — 부분일치가 접두 이웃(594.5↔594.54)만 잡아 진짜 원문을 가리는 사고 방지.
+  // 장서목록 밖 책(제적·타관 등)도 서가엔 실존: 라벨을 읽을 수 있으면 그 원문이 정답이다
+  if (direct.match(/\d.*[-]/) || !out.length)
+    el.innerHTML += `<button onclick="pick('${direct.replace(/'/g, "\\'")}')">✍ 목록에 없는 책 — 라벨에 적힌 그대로 입력:
       <b style="font-family:monospace;color:#f0d97e">${direct}</b></button>
       <div style="font-size:11px;color:#77876f;padding:4px 2px">분류번호와 저자기호가 확실히 보일 때만! 애매하면 스킵</div>`;
-  }
 }
 function editDist(a, b, cap) {           // 편집거리 (cap 초과 시 조기 탈출)
   if (Math.abs(a.length - b.length) > cap) return cap + 1;
