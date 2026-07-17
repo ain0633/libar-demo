@@ -97,6 +97,13 @@ function hits(q) {
     if (toks.every(t => hay.includes(t))) { out.push(b); if (out.length >= 8) break; }
   }
   el.innerHTML = out.map(b => `<button onclick="pick('${b.call.replace(/'/g, "\\'")}')"><b style="font-family:monospace;color:#7ef09a">${b.call}</b> <small style="color:#9fb39c">${(b.title || '').slice(0, 24)}</small></button>`).join('');
+  // 장서목록 밖 책(제적·타실 등)도 서가엔 실존 — 라벨을 읽을 수 있으면 그대로가 정답이다
+  if (!out.length && /\d/.test(q)) {
+    const direct = q.replace(/\s+/g, '-');
+    el.innerHTML = `<button onclick="pick('${direct.replace(/'/g, "\\'")}')">✍ 목록에 없는 책 — 라벨에 적힌 그대로 입력:
+      <b style="font-family:monospace;color:#f0d97e">${direct}</b></button>
+      <div style="font-size:11px;color:#77876f;padding:4px 2px">분류번호와 저자기호가 확실히 보일 때만! 애매하면 스킵</div>`;
+  }
 }
 async function submitLabels() {
   const rows = Object.entries(ans).filter(([, c]) => c !== '__skip' && c !== '__notlabel').map(([id, call]) => ({ id, call }));
