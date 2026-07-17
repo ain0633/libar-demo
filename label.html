@@ -102,10 +102,34 @@ function hits(q) {
   // 장서목록 밖 책(제적·타실 등)도 서가엔 실존 — 라벨을 읽을 수 있으면 그대로가 정답이다
   if (!out.length && /\d/.test(q)) {
     const direct = q.replace(/\s+/g, '-');
-    el.innerHTML = `<button onclick="pick('${direct.replace(/'/g, "\\'")}')">✍ 목록에 없는 책 — 라벨에 적힌 그대로 입력:
+    // 0건이면 오타 가능성부터 — 한두 글자 차이 근사 추천 (모27ㅋ→모57ㅋ 사례)
+    const near = [];
+    for (const b of cat) {
+      const d = editDist(direct, b.call.toLowerCase(), 3);
+      if (d <= 2) { near.push([d, b]); if (near.length >= 40) break; }
+    }
+    near.sort((x, y) => x[0] - y[0]);
+    el.innerHTML = (near.length ? `<div style="font-size:12px;color:#9fb39c;padding:4px 2px">혹시 이 책인가요?</div>` +
+      near.slice(0, 3).map(([, b]) => `<button onclick="pick('${b.call.replace(/'/g, "\\'")}')"><b style="font-family:monospace;color:#7ef09a">${b.call}</b> <small style="color:#9fb39c">${(b.title || '').slice(0, 24)}</small></button>`).join('') : '') +
+      `<button onclick="pick('${direct.replace(/'/g, "\\'")}')">✍ 목록에 없는 책 — 라벨에 적힌 그대로 입력:
       <b style="font-family:monospace;color:#f0d97e">${direct}</b></button>
       <div style="font-size:11px;color:#77876f;padding:4px 2px">분류번호와 저자기호가 확실히 보일 때만! 애매하면 스킵</div>`;
   }
+}
+function editDist(a, b, cap) {           // 편집거리 (cap 초과 시 조기 탈출)
+  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let rowMin = i;
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j-1] + 1, prev[j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+      if (cur[j] < rowMin) rowMin = cur[j];
+    }
+    if (rowMin > cap) return cap + 1;
+    prev = cur;
+  }
+  return prev[b.length];
 }
 async function submitLabels() {
   const rows = Object.entries(ans).filter(([, c]) => c !== '__skip' && c !== '__notlabel').map(([id, call]) => ({ id, call }));
