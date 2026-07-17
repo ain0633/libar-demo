@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>LibAR 조각 라벨링</title>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<style>
+  body { margin:0; background:#12160f; color:#e8f0e6; font-family:system-ui,sans-serif; }
+  .wrap { max-width:520px; margin:0 auto; padding:12px 14px 90px; }
+  .top { display:flex; justify-content:space-between; align-items:center; font-size:13px; color:#9fb39c; }
+  .bar { height:4px; background:#2a3226; border-radius:2px; margin:8px 0 12px; overflow:hidden; }
+  .bar>div { height:100%; background:#4be277; }
+  .imgbox { background:#1c2418; border:1px solid #33402d; border-radius:12px; padding:10px; text-align:center; }
+  .imgbox img { max-width:100%; max-height:46vh; border-radius:6px; transition:transform .15s; }
+  .imgbox img.zoom { transform:scale(1.9); }
+  .hint { font-size:11px; color:#77876f; margin-top:6px; }
+  .reads { margin:10px 0 4px; }
+  .reads span { display:inline-block; background:#233020; border:1px solid #3a4a33; border-radius:6px;
+                padding:2px 8px; margin:2px; font-size:13px; font-family:ui-monospace,monospace; color:#bcd8b4; }
+  button { -webkit-tap-highlight-color:transparent; }
+  .cand { display:block; width:100%; text-align:left; margin:6px 0; padding:11px 12px; border-radius:10px;
+          background:#1d2a1e; border:1px solid #3a5a3a; color:#e8f0e6; font-size:15px; }
+  .cand b { font-family:ui-monospace,monospace; color:#7ef09a; }
+  .cand small { color:#9fb39c; }
+  .row { display:flex; gap:8px; margin-top:10px; }
+  .row button { flex:1; padding:11px 0; border-radius:10px; border:1px solid #444; background:#20261d; color:#cfd8cc; font-size:14px; }
+  .row .skip { border-color:#6b5240; color:#e0b48a; }
+  input { width:100%; box-sizing:border-box; margin-top:10px; padding:11px 12px; border-radius:10px;
+          border:1px solid #3a4a33; background:#161c12; color:#e8f0e6; font-size:15px; }
+  .hits button { display:block; width:100%; text-align:left; margin:4px 0; padding:9px 12px; border-radius:8px;
+                 background:#182014; border:1px solid #2c3826; color:#e8f0e6; font-size:14px; }
+  .foot { position:fixed; bottom:0; left:0; right:0; background:#0e120bcc; backdrop-filter:blur(8px);
+          border-top:1px solid #2a3226; padding:10px 14px; }
+  .foot button { width:100%; max-width:520px; margin:0 auto; display:block; padding:12px 0; border-radius:12px;
+                 border:none; background:#2e7d46; color:#fff; font-size:15px; font-weight:700; }
+  .done { text-align:center; padding:60px 0; color:#9fb39c; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><b style="color:#e8f0e6">📖 조각 라벨링</b><span id="prog">…</span></div>
+  <div class="bar"><div id="pbar" style="width:0%"></div></div>
+  <div id="view">불러오는 중…</div>
+</div>
+<div class="foot"><button id="send" onclick="submitLabels()">📤 지금까지 결과 드라이브로 보내기</button></div>
+
+<script>
+// 사람 눈으로 크롭에 정답 부여 — 확실할 때만! 애매하면 반드시 '못 읽겠어요'.
+// (추측 정답은 학습을 오염시킵니다. 스킵은 손해가 아니라 순도입니다.)
+const UPLOAD_URL = 'https://script.google.com/macros/s/AKfycbwd36Iufa0geew10kenSHKur7Nsf_UNhUhX-KgvpdtfPF-9Yy6vCI2m-u0FGQs93q-c6Q/exec';
+let items = [], cat = [], pos = 0;
+const ans = JSON.parse(localStorage.getItem('libar_labels') || '{}');
+
+async function boot() {
+  const [b, c] = await Promise.all([
+    (await fetch('label_batch.json')).json(),
+    (await fetch('demo/catalog.json')).json()]);
+  items = b.items; cat = c;
+  pos = Math.min(+(localStorage.getItem('libar_label_pos') || 0), items.length - 1);
+  while (pos < items.length - 1 && ans[items[pos].id]) pos++;   // 이어하기: 안 한 곳으로
+  render();
+}
+function save() { localStorage.setItem('libar_labels', JSON.stringify(ans));
+                  localStorage.setItem('libar_label_pos', pos); }
+function pick(call) { ans[items[pos].id] = call; save(); next(); }
+function next() { if (pos < items.length - 1) { pos++; save(); render(); } else render(true); }
+function back() { if (pos > 0) { pos--; save(); render(); } }
+
+function render(end) {
+  const n = Object.keys(ans).length;
+  document.getElementById('prog').textContent = `${pos + 1}/${items.length} · 답변 ${n}`;
+  document.getElementById('pbar').style.width = (100 * (pos + 1) / items.length) + '%';
+  const v = document.getElementById('view');
+  if (end || !items.length) { v.innerHTML = `<div class="done">🎉 마지막 조각까지 봤어요!<br>아래 버튼으로 결과를 보내주세요 (답변 ${n}개)</div>`; return; }
+  const it = items[pos];
+  v.innerHTML = `
+    <div class="imgbox"><img src="${it.img}" onclick="this.classList.toggle('zoom')"><div class="hint">이미지를 누르면 확대</div></div>
+    ${it.reads.length ? `<div class="reads">앱이 읽은 것: ${it.reads.map(r => `<span>${r}</span>`).join('')}</div>` : ''}
+    <div id="cands">${it.cands.map(c => `<button class="cand" onclick="pick('${c.call.replace(/'/g, "\\'")}')"><b>${c.call}</b><br><small>${c.title || ''}</small></button>`).join('')}</div>
+    <input id="q" placeholder="🔍 청구기호·제목으로 직접 찾기 (예: 382.6 김)" oninput="hits(this.value)" autocomplete="off">
+    <div class="hits" id="hits"></div>
+    <div class="row">
+      <button onclick="back()">← 뒤로</button>
+      <button class="skip" onclick="pick('__skip')">🙅 못 읽겠어요 (스킵)</button>
+    </div>`;
+}
+function hits(q) {
+  q = q.trim().toLowerCase();
+  const el = document.getElementById('hits');
+  if (q.length < 2) { el.innerHTML = ''; return; }
+  const toks = q.split(/\s+/);
+  const out = [];
+  for (const b of cat) {
+    const hay = (b.call + ' ' + (b.title || '')).toLowerCase();
+    if (toks.every(t => hay.includes(t))) { out.push(b); if (out.length >= 8) break; }
+  }
+  el.innerHTML = out.map(b => `<button onclick="pick('${b.call.replace(/'/g, "\\'")}')"><b style="font-family:monospace;color:#7ef09a">${b.call}</b> <small style="color:#9fb39c">${(b.title || '').slice(0, 24)}</small></button>`).join('');
+}
+async function submitLabels() {
+  const rows = Object.entries(ans).filter(([, c]) => c !== '__skip').map(([id, call]) => ({ id, call }));
+  const btn = document.getElementById('send');
+  if (!rows.length) { btn.textContent = '아직 답변이 없어요 — 조각을 골라주세요'; setTimeout(() => btn.textContent = '📤 지금까지 결과 드라이브로 보내기', 2500); return; }
+  btn.textContent = `📤 ${rows.length}개 전송 중…`;
+  try {
+    const zip = new JSZip();
+    zip.file('labels.json', JSON.stringify({ source: 'LibAR label', date: new Date().toISOString(),
+      device: navigator.userAgent.slice(0, 60), skipped: Object.values(ans).filter(c => c === '__skip').length, labels: rows }, null, 1));
+    const b64 = await zip.generateAsync({ type: 'base64' });
+    await fetch(UPLOAD_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ name: `libar_labels_${Date.now()}.zip`, zip: b64 }) });
+    btn.textContent = `✅ ${rows.length}개 전송됨 — 이어서 하셔도 돼요`;
+  } catch (e) { btn.textContent = '⚠️ 전송 실패 — 잠시 후 다시'; }
+  setTimeout(() => btn.textContent = '📤 지금까지 결과 드라이브로 보내기', 3000);
+}
+boot();
+</script>
+</body>
+</html>
