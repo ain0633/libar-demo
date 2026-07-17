@@ -57,7 +57,10 @@ async function boot() {
     (await fetch('label_batch.json')).json(),
     (await fetch('demo/catalog.json')).json()]);
   items = b.items; cat = c;
-  pos = Math.min(+(localStorage.getItem('libar_label_pos') || 0), items.length - 1);
+  // #s=300 → 300번부터 시작 (팀 분담용: 이어하던 기기는 저장 위치 우선)
+  const m = location.hash.match(/s=(\d+)/);
+  const saved = localStorage.getItem('libar_label_pos');
+  pos = Math.min(saved !== null ? +saved : (m ? +m[1] : 0), items.length - 1);
   while (pos < items.length - 1 && ans[items[pos].id]) pos++;   // 이어하기: 안 한 곳으로
   render();
 }
