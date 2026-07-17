@@ -90,11 +90,13 @@ function hits(q) {
   q = q.trim().toLowerCase();
   const el = document.getElementById('hits');
   if (q.length < 2) { el.innerHTML = ''; return; }
-  const toks = q.split(/\s+/);
+  // 라벨(v.2/c.2)과 전산(-2/=2)의 권차·복본 표기가 다르다 — 토큰마다 대안형을 함께 시도
+  const alts = t => [...new Set([t, t.replace(/^v\./, ''), t.replace(/^c\./, '='), t.replace(/^c\./, '')])];
+  const toks = q.split(/\s+/).map(alts);
   const out = [];
   for (const b of cat) {
     const hay = (b.call + ' ' + (b.title || '')).toLowerCase();
-    if (toks.every(t => hay.includes(t))) { out.push(b); if (out.length >= 8) break; }
+    if (toks.every(ts => ts.some(t => hay.includes(t)))) { out.push(b); if (out.length >= 8) break; }
   }
   el.innerHTML = out.map(b => `<button onclick="pick('${b.call.replace(/'/g, "\\'")}')"><b style="font-family:monospace;color:#7ef09a">${b.call}</b> <small style="color:#9fb39c">${(b.title || '').slice(0, 24)}</small></button>`).join('');
   // 장서목록 밖 책(제적·타실 등)도 서가엔 실존 — 라벨을 읽을 수 있으면 그대로가 정답이다
