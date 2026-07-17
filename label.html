@@ -82,7 +82,8 @@ function render(end) {
     <div class="hits" id="hits"></div>
     <div class="row">
       <button onclick="back()">← 뒤로</button>
-      <button class="skip" onclick="pick('__skip')">🙅 못 읽겠어요 (스킵)</button>
+      <button class="skip" onclick="pick('__skip')">🙅 못 읽겠어요</button>
+      <button class="skip" style="border-color:#7a4040;color:#e08a8a" onclick="pick('__notlabel')">🚫 라벨이 아님</button>
     </div>`;
 }
 function hits(q) {
@@ -98,18 +99,20 @@ function hits(q) {
   el.innerHTML = out.map(b => `<button onclick="pick('${b.call.replace(/'/g, "\\'")}')"><b style="font-family:monospace;color:#7ef09a">${b.call}</b> <small style="color:#9fb39c">${(b.title || '').slice(0, 24)}</small></button>`).join('');
 }
 async function submitLabels() {
-  const rows = Object.entries(ans).filter(([, c]) => c !== '__skip').map(([id, call]) => ({ id, call }));
+  const rows = Object.entries(ans).filter(([, c]) => c !== '__skip' && c !== '__notlabel').map(([id, call]) => ({ id, call }));
+  const notlabels = Object.entries(ans).filter(([, c]) => c === '__notlabel').map(([id]) => id);   // 검출기 하드 네거티브 재료
   const btn = document.getElementById('send');
-  if (!rows.length) { btn.textContent = '아직 답변이 없어요 — 조각을 골라주세요'; setTimeout(() => btn.textContent = '📤 지금까지 결과 드라이브로 보내기', 2500); return; }
-  btn.textContent = `📤 ${rows.length}개 전송 중…`;
+  if (!rows.length && !notlabels.length) { btn.textContent = '아직 답변이 없어요 — 조각을 골라주세요'; setTimeout(() => btn.textContent = '📤 지금까지 결과 드라이브로 보내기', 2500); return; }
+  btn.textContent = `📤 ${rows.length + notlabels.length}개 전송 중…`;
   try {
     const zip = new JSZip();
     zip.file('labels.json', JSON.stringify({ source: 'LibAR label', date: new Date().toISOString(),
-      device: navigator.userAgent.slice(0, 60), skipped: Object.values(ans).filter(c => c === '__skip').length, labels: rows }, null, 1));
+      device: navigator.userAgent.slice(0, 60), skipped: Object.values(ans).filter(c => c === '__skip').length,
+      notlabels, labels: rows }, null, 1));
     const b64 = await zip.generateAsync({ type: 'base64' });
     await fetch(UPLOAD_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({ name: `libar_labels_${Date.now()}.zip`, zip: b64 }) });
-    btn.textContent = `✅ ${rows.length}개 전송됨 — 이어서 하셔도 돼요`;
+    btn.textContent = `✅ ${rows.length + notlabels.length}개 전송됨 — 이어서 하셔도 돼요`;
   } catch (e) { btn.textContent = '⚠️ 전송 실패 — 잠시 후 다시'; }
   setTimeout(() => btn.textContent = '📤 지금까지 결과 드라이브로 보내기', 3000);
 }
