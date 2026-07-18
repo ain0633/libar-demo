@@ -632,9 +632,12 @@ async function hiShot(fallback) {
         _hiInfo = `원샷 ${c.width}×${c.height} ⬆`;
       }
       await track.applyConstraints({ width: { ideal: 1920 } }).catch(() => {});
+      // iOS는 해상도 재협상 후 <video>를 정지 상태로 둘 수 있다(스트림 생존·화면만 블랙) — 강제 재생
+      cam.play?.().catch(() => {});
       if (c) return c;
     } catch(e) {}
   }
+  document.getElementById('cam').play?.().catch(() => {});
   _hiInfo = '';
   return fallback;
 }
@@ -725,8 +728,11 @@ async function toggleLive(analyze = true) {
     } else if (stable && rows.length >= 5 && !scanning && Date.now() - lastRead > 12000) {
       scanning = true;
       try {
+        // 첫 판독의 rec 준비(48MB 다운로드, 몇 분 가능)를 원샷보다 먼저 — 전환 상태 방치 금지
+        const recReady = await ensureRec(m => { readMsg = `🔍 ${m} — 카메라는 계속 비춰도 돼요`;
+          document.getElementById('scan-title').textContent = readMsg; });
         // A안: 판독 순간만 고해상 원샷 — 실패 시 hi === fc(현재 프레임)라 기존 동작과 동일
-        const hi = await hiShot(fc);
+        const hi = recReady && live && gen === liveGen ? await hiShot(fc) : fc;
         const hrows = hi === fc ? rows : await detect(hi, 1280);
         const okRec = await recognizeAll(hi, hrows, m => { readMsg = `🔍 ${m} — 카메라는 계속 비춰도 돼요`;
           document.getElementById('scan-title').textContent = readMsg; });
