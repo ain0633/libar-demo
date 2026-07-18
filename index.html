@@ -612,7 +612,7 @@ async function hiShot(fallback) {
     try {
       const ic = new ImageCapture(track);
       const cap = await ic.getPhotoCapabilities().catch(() => null);
-      const opt = cap?.imageWidth?.max ? { imageWidth: Math.min(cap.imageWidth.max, 4096) } : {};
+      const opt = cap?.imageWidth?.max ? { imageWidth: Math.min(cap.imageWidth.max, 3072) } : {};
       const bmp = await createImageBitmap(await ic.takePhoto(opt), { imageOrientation: 'from-image' });
       // 세로로 회전돼 온 사진은 책이 90° 누워 검출 전멸 — 방향이 같고 실제로 클 때만 채택
       const ok = (bmp.width > bmp.height) === (fallback.width > fallback.height) && bmp.width > fw;
@@ -624,7 +624,9 @@ async function hiShot(fallback) {
   if (track) {
     try {                                              // 해상도 순간 승격 (미지원 기기는 무변화 통과)
       const cam = document.getElementById('cam');
-      await track.applyConstraints({ width: { ideal: 4096 }, height: { ideal: 3072 } });
+      // 4K(8.3MP)는 판독 피크가 WebKit 탭 예산을 때려 jetsam 크래시 루프(16 Pro 현장 실증) —
+      // 2560(3.7MP)이면 픽셀 1.8배 이득은 유지하면서 메모리·발열 절반 이하
+      await track.applyConstraints({ width: { ideal: 2560 }, height: { ideal: 1440 } });
       await new Promise(r => setTimeout(r, 350));      // 스트림 재협상 대기
       let c = null;
       if (live && cam.videoWidth > fw) {
@@ -725,7 +727,7 @@ async function toggleLive(analyze = true) {
         } catch(e) { console.error('수집 실패', e); }
         finally { scanning = false; lastRead = Date.now(); }
       }
-    } else if (stable && rows.length >= 5 && !scanning && Date.now() - lastRead > 12000) {
+    } else if (stable && rows.length >= 5 && !scanning && Date.now() - lastRead > 18000) {   // 원샷 판독이 무거워져 간격 12→18초 (발열·피크 인하)
       scanning = true;
       try {
         // 첫 판독의 rec 준비(48MB 다운로드, 몇 분 가능)를 원샷보다 먼저 — 전환 상태 방치 금지
