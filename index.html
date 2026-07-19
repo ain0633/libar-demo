@@ -626,16 +626,27 @@ function fillSheet(img, rows) {
 // 새로 만들면 GC가 라이브 화면을 멈칫거리게 한다 (detect는 항상 직렬 호출이라 재사용 안전)
 // 모델은 동적 입력: 라이브 프레임(1080p)은 960이면 박스 98% 유지에 ~5배 빠름(발열 인하),
 // 12MP 사진은 1280 유지(960은 -16% 손실 실측) — sz 인자로 경로별 선택
-const _det = {};                                       // sz → {cnv, x} 캐시
+const _det = {};                                       // sz → {cnv, x, iw, ih} 캐시
+const _lut = new Float32Array(256);                    // ÷255 조견표 — 픽셀당 나눗셈 제거 (값 비트 동일)
+for (let v = 0; v < 256; v++) _lut[v] = v / 255;
 async function detect(img, sz = SZ) {
   const { W, H } = dims(img); const r = sz / Math.max(W, H);
-  if (!_det[sz]) _det[sz] = { cnv: mkCanvas(sz, sz), x: new Float32Array(3 * sz * sz) };
-  const ox = _det[sz].cnv.getContext('2d', { willReadFrequently: true });
+  if (!_det[sz]) { _det[sz] = { cnv: mkCanvas(sz, sz), x: new Float32Array(3 * sz * sz), iw: 0, ih: 0 };
+                   _det[sz].x.fill(_lut[114]); }       // 패딩(회색) 상수는 버퍼 생성 시 1회만 채운다
+  const dc = _det[sz];
+  const ox = dc.cnv.getContext('2d', { willReadFrequently: true });
   ox.fillStyle = 'rgb(114,114,114)'; ox.fillRect(0, 0, sz, sz);
   ox.drawImage(img, 0, 0, W * r, H * r);
-  const px = ox.getImageData(0, 0, sz, sz).data;
-  const x = _det[sz].x;
-  for (let i = 0, n = sz * sz; i < n; i++) { x[i] = px[i*4]/255; x[n+i] = px[i*4+1]/255; x[2*n+i] = px[i*4+2]/255; }
+  // 이미지가 실제 차지하는 영역만 변환 — 정사각 입력의 25~44%인 회색 패딩을 매 프레임 재변환하는 낭비 제거
+  const iw = Math.min(sz, Math.ceil(W * r)), ih = Math.min(sz, Math.ceil(H * r));
+  if (iw < dc.iw || ih < dc.ih) dc.x.fill(_lut[114]);  // 영역 축소 시(사진→카메라 등) 이전 프레임 잔상 소거
+  dc.iw = iw; dc.ih = ih;
+  const px = ox.getImageData(0, 0, iw, ih).data;
+  const x = dc.x, n = sz * sz;
+  for (let y = 0; y < ih; y++)
+    for (let si = y * iw * 4, di = y * sz, e = di + iw; di < e; si += 4, di++) {
+      x[di] = _lut[px[si]]; x[n + di] = _lut[px[si+1]]; x[2*n + di] = _lut[px[si+2]];
+    }
   const t0 = performance.now();
   const out = await sess.run({ images: new ort.Tensor('float32', x, [1, 3, sz, sz]) });
   lastMs = performance.now() - t0;
@@ -769,6 +780,10 @@ async function toggleLive(analyze = true) {
     if (!cam.videoWidth) break;                      // 일시정지 직후 죽은 스트림 가드 (0 나누기 방지)
     if (!sess) {                                     // 첫 방문: 검출 모델(9.8MB) 다운로드가 카메라보다 늦다 — 준비될 때까지 대기
       document.getElementById('scan-title').textContent = '검출 모델 준비 중… 잠시만요';
+      await new Promise(r => setTimeout(r, 300)); continue;
+    }
+    if (expanded || document.hidden) {               // 시트가 화면을 덮거나 백그라운드 — 아무도 못 보는
+      _paceRest = -1;                                // 검출은 순수 발열. 시트 접으면 다음 프레임 즉시 재개
       await new Promise(r => setTimeout(r, 300)); continue;
     }
     const tFrame = performance.now();
