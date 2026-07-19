@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html class="dark" lang="ko">
 <head>
 <meta charset="utf-8"/>
@@ -393,6 +393,83 @@ async function stripTokens(img, sy0, sy1, W, onMsg, tag) {
   return toks.map(t => ({ t: t.t, x: t.x / f, y: t.y / f + sy0 }));   // 사진 절대 좌표
 }
 
+// ── 위험군 한정 선별 제목 대조: 라벨만으로 특정 불가한 ~430권(전체 2%)만 제목 줄을 추가로 읽는다 ──
+// 위험군 = ①접두 분류쌍+동일 저자(592.2/592.27-애897ㅂ) ②저자기호 꼬리 숫자 시리즈(된22ㅇ10/11).
+// 보수 설계: 제목 승자가 명확(점수+격차)할 때만 교체 — 못 읽으면 현행 유지라 성능 하락 없음.
+let _risk = null, _titleByCall = null, _titleChecks = 0, _titleMs = 0;
+function buildRiskGroups(cat) {
+  const tail = new Map(), byClsAuth = new Map();
+  _titleByCall = new Map();
+  const push = (m, k, v) => { const a = m.get(k); a ? a.push(v) : m.set(k, [v]); };
+  for (const b of cat) {
+    const p = b.call.split('-');
+    if (p.length < 2) continue;
+    _titleByCall.set(b.call, b.title || '');
+    const m = p[1].match(/^(.*?[가-힣ㄱ-ㅎ])(\d+)$/);
+    if (m) push(tail, p[0] + '|' + m[1], b.call);
+    push(byClsAuth, p[0] + '|' + p[1], b.call);
+  }
+  const groups = [];
+  for (const v of tail.values()) { const u = [...new Set(v)]; if (u.length >= 2) groups.push(u); }
+  const byAuth = new Map();
+  for (const k of byClsAuth.keys()) { const [cls, a] = k.split('|'); push(byAuth, a, cls); }
+  for (const [a, clss] of byAuth) {
+    if (clss.length < 2) continue;
+    const u = [...new Set(clss)].sort();
+    for (let i = 0; i < u.length - 1; i++)
+      if (u[i + 1].startsWith(u[i]))
+        groups.push([...byClsAuth.get(u[i] + '|' + a), ...byClsAuth.get(u[i + 1] + '|' + a)]);
+  }
+  const map = new Map();
+  for (const g of groups) { const u = [...new Set(g)]; if (u.length >= 2) for (const c of u) map.set(c, u); }
+  return map;
+}
+function titleSim(a, b) {                              // 2-gram 겹침 (부분 판독으로도 상대 비교 가능)
+  const n = s => String(s).toLowerCase().replace(/[^0-9a-z가-힣]/g, '');
+  a = n(a); b = n(b);
+  if (a.length < 2 || b.length < 2) return 0;
+  const grams = s => { const g = new Set(); for (let i = 0; i < s.length - 1; i++) g.add(s.slice(i, i + 2)); return g; };
+  const A = grams(a), B = grams(b);
+  let inter = 0; for (const x of A) if (B.has(x)) inter++;
+  return 2 * inter / (A.size + B.size || 1);
+}
+async function titleArbitrate(img, rows) {
+  const risky = rows.filter(r => r.call && _risk?.has(r.call));
+  if (!risky.length) return;
+  const { W, H } = dims(img);
+  const t0 = performance.now();
+  for (const r of risky.slice(0, 6)) {                 // 한 판독당 상한 (과부하 방지)
+    const g = _risk.get(r.call);
+    const [x0, y0, x1] = r.box, bh = r.box[3] - r.box[1], bw = x1 - x0;
+    const ty0 = Math.max(0, y0 - bh * 5), th = y0 - ty0;
+    if (th < bh || bw < 8) continue;                   // 제목 영역이 프레임 밖이면 포기(현행 유지)
+    const crop = mkCanvas(Math.round(bw), Math.round(th));
+    crop.getContext('2d').drawImage(img, Math.round(x0), Math.round(ty0), Math.round(bw), Math.round(th),
+                                    0, 0, crop.width, crop.height);
+    const scores = new Map();
+    for (const dir of [1, -1]) {                       // 책등 세로 제목 — 양방향 회전 시도
+      const rot = mkCanvas(crop.height, crop.width);
+      const cx = rot.getContext('2d');
+      cx.translate(rot.width / 2, rot.height / 2); cx.rotate(dir * Math.PI / 2);
+      cx.drawImage(crop, -crop.width / 2, -crop.height / 2);
+      let txt = '';
+      try { txt = (await detRecPiece(rot)).map(t => t.t).join(' '); } catch (e) { continue; }
+      if (txt.length < 2) continue;
+      for (const cand of g) {
+        const s = titleSim(txt, _titleByCall.get(cand) || '');
+        if (s > (scores.get(cand) || 0)) scores.set(cand, s);
+      }
+    }
+    _titleChecks++;
+    const ranked = [...scores.entries()].sort((p, q) => q[1] - p[1]);
+    if (ranked.length >= 2 && ranked[0][1] >= 0.4 && ranked[0][1] - ranked[1][1] >= 0.12
+        && ranked[0][0] !== r.call) {
+      r.call = ranked[0][0]; r.title = _titleByCall.get(ranked[0][0]) || r.title;   // 제목이 심판
+    }
+  }
+  _titleMs = Math.round(performance.now() - t0);
+}
+
 async function recognizeAll(img, rows, onMsg) {
   if (!await ensureRec(onMsg)) return false;
   const { W, H } = dims(img);
@@ -412,6 +489,8 @@ async function recognizeAll(img, rows, onMsg) {
     extras.push(...assignTokens(rb, toks, txt => matchCall(txt, recIdx)));
   }
   rows.push(...extras);                                // 클러스터 채널 회수 라벨
+  if (!_risk) _risk = buildRiskGroups(await loadCatalogRaw());
+  await titleArbitrate(img, rows);                     // 위험군 한정 선별 제목 대조 (~2% 책만 발동)
   lastRecMs = performance.now() - t0;
   flagMisplaced(rows);                                 // 오배열 플래그는 직독(청구기호)만
   return true;
@@ -577,7 +656,8 @@ function renderAll(img, rows, title, bag = true) {
   const nd = rows.filter(r => r.how === '청구기호').length;
   document.getElementById('dev-info').innerHTML =
     `검출 call_label_yolo3 · ${backend} · ${lastMs.toFixed(0)}ms · 박스 ${rows.length}<br>` +
-    `인식 rec_v4 fp16 (${recBackend}) · 줄 ${lastRecN}개 ${(lastRecMs/1000).toFixed(1)}s · 직독 ${nd}<br>` +
+    `인식 rec_v4 fp16 (${recBackend}) · 줄 ${lastRecN}개 ${(lastRecMs/1000).toFixed(1)}s · 직독 ${nd}` +
+    `${_titleChecks ? ` · 제목대조 ${_titleChecks}건 ${_titleMs}ms` : ''}<br>` +
     `대조 ${_catRaw ? _catRaw.length.toLocaleString() : '…'}권 카탈로그 · 판정 행별 LIS — 전 과정 온디바이스`;
 }
 
