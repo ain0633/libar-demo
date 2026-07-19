@@ -207,7 +207,7 @@ tailwind.config = { darkMode:"class", theme:{ extend:{
 
 <script>
 const SZ = 1280, CONF = 0.25;
-let sess = null, lastRows = null, lastImg = null, lastMs = 0, expanded = false;
+let sess = null, lastRows = null, lastImg = null, lastMs = 0, expanded = false, _paceRest = 0;
 
 function show(v) { document.querySelectorAll('.view').forEach(e => e.classList.remove('active'));
   document.getElementById('view-' + v).classList.add('active');
@@ -764,7 +764,7 @@ async function toggleLive(analyze = true) {
   await _liveDone.catch(() => {});                   // 이전 루프의 마지막 추론까지 완전 종료 대기
   if (gen !== liveGen) return;                       //   (세대 토큰은 다음 확인 시점에야 멈춤 —
   _liveDone = (async () => {                         //    날아가던 추론과의 겹침은 직렬화로만 차단)
-  let n = 0, tSum = 0, prevN = -1, lastRead = 0, readMsg = '', fc = null;
+  let n = 0, tSum = 0, prevN = -1, lastRead = 0, readMsg = '', fc = null, idleSince = 0;
   while (live && gen === liveGen) {                                     // 직렬 루프: 추론 끝나는 대로 다음 프레임
     if (!cam.videoWidth) break;                      // 일시정지 직후 죽은 스트림 가드 (0 나누기 방지)
     if (!sess) {                                     // 첫 방문: 검출 모델(9.8MB) 다운로드가 카메라보다 늦다 — 준비될 때까지 대기
@@ -848,8 +848,11 @@ async function toggleLive(analyze = true) {
       } finally { scanning = false; lastRead = Date.now(); }
     }
     // 검출 페이싱: 연속 풀가동은 폰을 몇 분 만에 발열 한계로 몰아 서멀 스로틀링을 부른다 —
-    // 프레임 간격에 바닥을 깔아 가동률을 낮춘다 (표시 체감 무손실, 수집 모드는 4초 저장이라 더 낮게)
-    const pace = (collectMode ? 500 : 280) - (performance.now() - tFrame);
+    // 프레임 간격에 바닥을 깔아 가동률을 낮춘다. 박스 0개가 3초 이어지면(서가를 안 비추는 중)
+    // 900ms 유휴 감속, 박스가 잡히면 다음 프레임부터 즉시 복귀 (대가 = 첫 박스 표시 최대 ~1초 지연)
+    if (rows.length) idleSince = 0; else if (!idleSince) idleSince = performance.now();
+    const rest = _paceRest = idleSince && performance.now() - idleSince > 3000 ? 900 : (collectMode ? 500 : 450);
+    const pace = rest - (performance.now() - tFrame);
     await new Promise(r => setTimeout(r, Math.max(30, pace)));
   }
   if (collectMode && optin()) flushBag();            // 라이브 종료: 배치 문턱(24개) 미달 잔여분 마저 전송
