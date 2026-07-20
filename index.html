@@ -147,6 +147,9 @@ tailwind.config = { darkMode:"class", theme:{ extend:{
 
   <!-- 부가 기능 (시트 위 우하단): 사진 업로드 + 샘플 사진 -->
   <div class="fixed right-3 z-40 flex flex-col items-end gap-1.5" style="bottom:130px; pointer-events:auto">
+    <label class="bg-primary/90 text-on-primary backdrop-blur border border-primary rounded-lg px-3 py-2 text-xs font-bold cursor-pointer">
+      📷 사진 점검 (사서용)<input type="file" accept="image/*" capture="environment" id="photocheck" class="hidden"></label>
+    <div id="insp-count" class="hidden bg-surface-container/85 backdrop-blur border border-outline-variant rounded-md px-2 py-1 text-[10px] text-on-surface-variant"></div>
     <label class="bg-surface-container/85 backdrop-blur border border-outline-variant rounded-lg px-3 py-2 text-xs font-bold cursor-pointer">
       🖼 사진 업로드<input type="file" accept="image/*" id="file" class="hidden"></label>
     <div class="flex gap-1.5 text-[10px]">
@@ -899,6 +902,33 @@ document.getElementById('file').onchange = async ev => {
   ev.target.value = '';                              // 같은 파일 재선택 시 onchange 재발화
 };
 
+// ── 사서용 사진 점검: 네이티브 카메라 12MP 정지 촬영(라이브보다 픽셀 3배) → 판독 → 점검 기록 누적.
+//    라이브와 달리 한 장씩 리포트로 남겨 사서가 업무 기록·대조에 쓴다 (📋 버튼으로 세션 전체 전송). ──
+let _inspLog = [];                                   // [{blob(합성 리포트 jpg), ts, ok, mis, books}]
+document.getElementById('photocheck').onchange = async ev => {
+  const f = ev.target.files[0]; if (!f) return;
+  if (!sess) { document.getElementById('scan-title').textContent = '모델 준비 중… 잠시 후 다시 시도해주세요'; return; }
+  if (live) await toggleLive(false);
+  const img = document.getElementById('photo');
+  img.src = URL.createObjectURL(f);
+  await img.decode();
+  // 판독 전 rec 준비(48MB, 첫 장만) — 사진 점검은 항상 인식까지 간다
+  await ensureRec(m => document.getElementById('scan-title').textContent = `🔍 ${m}`);
+  await scanImage(img, '📷 사진 점검');
+  ev.target.value = '';
+  if (lastRows && lastRows.some(r => r.call)) await logInspection();
+  else document.getElementById('scan-title').textContent += ' — 청구기호를 못 읽었어요, 더 가까이/밝게 다시 찍어보세요';
+};
+async function logInspection() {
+  const { blob, ok, mis, books } = await buildReport();   // _repFrame(방금 사진) 기준 합성
+  _inspLog.push({ blob, ts: Date.now(), ok, mis,
+                  books: books.map(b => ({ call: b.call, title: b.title || '', mis: !!b.mis })) });
+  const totMis = _inspLog.reduce((s, e) => s + e.mis, 0);
+  const el = document.getElementById('insp-count');
+  el.classList.remove('hidden');
+  el.textContent = `📸 점검 ${_inspLog.length}장 · 오배열 ${totMis}권 — 📋로 기록 저장`;
+}
+
 addEventListener('resize', () => {
   if (lastLocate) locateRender(lastLocate);                       // 도서찾기 하이라이트 유지
   else if (lastImg && lastRows) drawBoxes(lastImg, lastRows); });
@@ -1199,8 +1229,30 @@ async function buildReport() {
              : await new Promise(r => c.toBlob(r, 'image/jpeg', .9));   // OffscreenCanvas엔 toBlob이 없다
   return { blob, ok, mis: mis.length, books };
 }
+// 점검 기록(_inspLog) → 여러 장 리포트를 한 zip으로. 테스트·전송 공용.
+async function buildReportZip() {
+  const zip = new JSZip();
+  if (_inspLog.length) {                              // 사서 사진 점검: 세션에 쌓인 점검 사진 전부
+    const summary = { source: 'LibAR 사서 점검 기록', date: new Date().toISOString(),
+      device: navigator.userAgent.slice(0, 60), photos: _inspLog.length,
+      totMis: _inspLog.reduce((s, e) => s + e.mis, 0), items: [] };
+    _inspLog.forEach((e, i) => {
+      zip.file(`report_${i + 1}.jpg`, e.blob);
+      summary.items.push({ file: `report_${i + 1}.jpg`, time: new Date(e.ts).toISOString(),
+        ok: e.ok, mis: e.mis, books: e.books });
+    });
+    zip.file('summary.json', JSON.stringify(summary, null, 1));
+    return { zip, ok: summary.items.reduce((s, p) => s + p.ok, 0), mis: summary.totMis, n: _inspLog.length };
+  }
+  const { blob, ok, mis, books } = await buildReport();   // 라이브·단발: 최근 프레임 1장
+  zip.file('report.jpg', blob);
+  zip.file('report.json', JSON.stringify({ source: 'LibAR report', date: new Date().toISOString(),
+    device: navigator.userAgent.slice(0, 60), ok, mis,
+    books: books.map(b => ({ call: b.call, title: b.title || '', mis: !!b.mis })) }, null, 1));
+  return { zip, ok, mis, n: 1 };
+}
 async function sendReport() {
-  if (!_repFrame) { alert('판독 결과가 아직 없어요 — 먼저 서가를 스캔해주세요'); return; }
+  if (!_inspLog.length && !_repFrame) { alert('판독 결과가 아직 없어요 — 먼저 서가를 스캔해주세요'); return; }
   // 조각 제공과 달리 리포트엔 서가 화면 전체가 담긴다 — 첫 사용 때 한 번만 확인
   if (!localStorage.getItem('libar_report_ok')) {
     if (!confirm('리포트에는 주석이 그려진 서가 화면 전체가 담겨 팀 드라이브 수신함으로 전송돼요.\n계속할까요? (이후엔 버튼 한 번에 바로 전송)')) return;
@@ -1208,13 +1260,8 @@ async function sendReport() {
   }
   const btn = document.getElementById('btn-report');
   try {
-    btn.textContent = '📋 리포트 만드는 중…';
-    const { blob, ok, mis, books } = await buildReport();
-    const zip = new JSZip();
-    zip.file('report.jpg', blob);
-    zip.file('report.json', JSON.stringify({ source: 'LibAR report', date: new Date().toISOString(),
-      device: navigator.userAgent.slice(0, 60), ok, mis,
-      books: books.map(b => ({ call: b.call, title: b.title || '', mis: !!b.mis })) }, null, 1));
+    btn.textContent = _inspLog.length ? `📋 점검 ${_inspLog.length}장 묶는 중…` : '📋 리포트 만드는 중…';
+    const { zip } = await buildReportZip();
     const b64 = await zip.generateAsync({ type: 'base64' });
     btn.textContent = `📤 리포트 전송 중… (${Math.round(b64.length * 0.75 / 1024)}KB)`;
     await fetch(UPLOAD_URL, { method: 'POST', mode: 'no-cors',
