@@ -50,7 +50,8 @@ tailwind.config = { darkMode:"class", theme:{ extend:{
   <header class="flex justify-between items-center">
     <div class="flex items-center gap-2">
       <span class="material-symbols-outlined text-primary text-3xl">view_in_ar</span>
-      <h1 class="text-2xl font-bold">LibAR</h1>
+      <div><h1 class="text-2xl font-bold leading-tight">LibAR</h1>
+        <div class="text-[11px] text-on-surface-variant -mt-0.5">스마트 서가 탐색·점검 도우미</div></div>
     </div>
     <button class="bg-surface-container border border-outline-variant rounded-lg px-3 py-1.5 text-sm flex items-center gap-1">
       영등포구립 대림도서관 <span class="material-symbols-outlined text-base">expand_more</span>
@@ -76,6 +77,7 @@ tailwind.config = { darkMode:"class", theme:{ extend:{
 
   <footer class="text-center text-xs text-on-surface-variant space-y-1 pt-2">
     <div>🔒 촬영한 사진은 휴대폰 밖으로 나가지 않아요</div>
+    <div class="text-[10px] opacity-70">설치 없이 바로 쓰는 온디바이스 AI — 서버·개인정보 수집 없이 동작해요</div>
     <details class="text-[10px] opacity-60"><summary class="cursor-pointer">개발자 정보</summary>
       <span class="font-mono-data">인식 v4 · 검출 v3 · <span id="home-backend">-</span></span></details>
   </footer>
@@ -602,9 +604,10 @@ function misplaceReason(row, allRows) {
   }
   return { call: row.call, title: row.title || '', phys, exp: { left: expL, right: expR } };
 }
-let _reasonPop = null;
+let _reasonPop = null, _reasonRow = null;
 function showReason(row, allRows) {
   const r = misplaceReason(row, allRows);
+  _reasonRow = row;
   if (!_reasonPop) {
     _reasonPop = document.createElement('div');
     _reasonPop.id = 'reasonPop';
@@ -612,7 +615,10 @@ function showReason(row, allRows) {
       + 'width:min(340px,90vw);background:#141a14;border:1px solid #ff6b64;border-radius:14px;'
       + 'padding:16px;box-shadow:0 8px 32px rgba(0,0,0,.5);font-family:sans-serif';
     document.body.appendChild(_reasonPop);
-    _reasonPop.addEventListener('click', e => { if (e.target.dataset.close !== undefined) hideReason(); });
+    _reasonPop.addEventListener('click', e => {
+      if (e.target.dataset.resolve !== undefined) resolveMis(_reasonRow);
+      else if (e.target.dataset.close !== undefined) hideReason();
+    });
   }
   const slot = c => c ? `<span style="font-family:monospace;color:#e8f0e6">${c}</span>`
                       : `<span style="color:#7a8a78">서가 끝</span>`;
@@ -625,12 +631,57 @@ function showReason(row, allRows) {
      <div style="font-size:13px;color:#9fb39c;line-height:1.7">
        <div>지금 꽂힌 곳 &nbsp;${slot(r.phys.left)} <span style="color:#7a8a78">↔</span> ${slot(r.phys.right)} 사이</div>
        <div>올바른 자리 &nbsp;${slot(r.exp.left)} <span style="color:#7a8a78">↔</span> ${slot(r.exp.right)} 사이</div></div>
-     <button data-close style="margin-top:12px;width:100%;background:#4be277;color:#003915;border:0;
-       border-radius:10px;padding:9px;font-weight:700;font-size:13px;cursor:pointer">확인했어요</button>`;
-  _reasonPop.classList.remove('hidden');
+     <div style="display:flex;gap:8px;margin-top:12px">
+       <button data-close style="flex:1;background:#2a332a;color:#e8f0e6;border:0;
+         border-radius:10px;padding:9px;font-weight:600;font-size:13px;cursor:pointer">닫기</button>
+       <button data-resolve style="flex:1;background:#4be277;color:#003915;border:0;
+         border-radius:10px;padding:9px;font-weight:700;font-size:13px;cursor:pointer">✅ 재배열 완료</button></div>`;
   _reasonPop.style.display = 'block';
 }
 function hideReason() { if (_reasonPop) _reasonPop.style.display = 'none'; }
+
+// 조치 체크(세션 내): 사서가 책을 제자리에 꽂은 뒤 완료 표시 — 목록·카운터·리포트에 반영.
+// 다시 스캔해서 여전히 어긋나 있으면 재판정이 다시 빨간로 올림 (물리 상태가 진실)
+function resolveMis(row) {
+  if (!row) return;
+  row.resolved = true;
+  const sb = sessionBooks.get(row.call); if (sb) sb.resolved = true;
+  hideReason();
+  if (lastImg && _sheetRows.length) fillSheet(lastImg, _sheetRows);
+}
+
+// 판독 불가 안내(n17): 뭉개진 제목줄 텍스트 대신 원인·재촬영 가이드 카드
+let _noReadPop = null;
+function showNoRead(kind) {
+  if (!_noReadPop) {
+    _noReadPop = document.createElement('div');
+    _noReadPop.id = 'noReadPop';
+    _noReadPop.style.cssText = 'position:fixed;left:50%;bottom:132px;transform:translateX(-50%);z-index:50;'
+      + 'width:min(340px,90vw);background:#141a14;border:1px solid #9fb39c;border-radius:14px;'
+      + 'padding:16px;box-shadow:0 8px 32px rgba(0,0,0,.5);font-family:sans-serif';
+    document.body.appendChild(_noReadPop);
+    _noReadPop.addEventListener('click', e => {
+      if (e.target.dataset.retry !== undefined) { hideNoRead(); document.getElementById(_noReadPop.dataset.input).click(); }
+      else if (e.target.dataset.close !== undefined) hideNoRead();
+    });
+  }
+  _noReadPop.dataset.input = kind === 'photo' ? 'photocheck' : 'file';
+  _noReadPop.innerHTML =
+    `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+       <b style="color:#e8f0e6;font-size:15px">🔍 청구기호를 못 읽었어요</b>
+       <span data-close style="color:#9fb39c;cursor:pointer;font-size:20px;line-height:1;padding:0 4px">✕</span></div>
+     <div style="font-size:13px;color:#9fb39c;line-height:1.8">
+       <div>📏 <b style="color:#e8f0e6">한 칸씩 가까이</b> — 라벨 글자가 또렷이 보이는 거리(약 1m)</div>
+       <div>💡 <b style="color:#e8f0e6">밝게</b> — 그림자·형광등 반사를 피해서</div>
+       <div>📐 <b style="color:#e8f0e6">정면에서</b> — 비스듬하면 글자가 겹쳐 보여요</div></div>
+     <div style="display:flex;gap:8px;margin-top:12px">
+       <button data-close style="flex:1;background:#2a332a;color:#e8f0e6;border:0;
+         border-radius:10px;padding:9px;font-weight:600;font-size:13px;cursor:pointer">닫기</button>
+       <button data-retry style="flex:1;background:#4be277;color:#003915;border:0;
+         border-radius:10px;padding:9px;font-weight:700;font-size:13px;cursor:pointer">${kind === 'photo' ? '📷 다시 찍기' : '🖼 다른 사진'}</button></div>`;
+  _noReadPop.style.display = 'block';
+}
+function hideNoRead() { if (_noReadPop) _noReadPop.style.display = 'none'; }
 
 // 사진에서 박스 영역 썸네일 크롭
 function thumb(img, box, w = 72) {
@@ -647,14 +698,15 @@ function tsrc(img, r, w) { return r.thumbData || thumb(img, r.box, w); }   // �
 let _sheetRows = [];
 function fillSheet(img, rows) {
   _sheetRows = rows;                                  // 시트 항목 탭 → 근거 조회용
-  const ok = rows.filter(r => r.call && !r.mis), mis = rows.filter(r => r.mis), gray = rows.filter(r => !r.call);
+  const ok = rows.filter(r => r.call && !r.mis), misAll = rows.filter(r => r.mis), gray = rows.filter(r => !r.call);
+  const mis = misAll.filter(r => !r.resolved), done = misAll.filter(r => r.resolved);
   document.getElementById('c-ok').textContent = ok.length;
   document.getElementById('c-mis').textContent = mis.length;
   document.getElementById('c-gray').textContent = gray.length;
   document.getElementById('n-ok2').textContent = ok.length + '권';
 
   const lm = document.getElementById('list-mis'); lm.innerHTML = '';
-  document.getElementById('sec-mis').classList.toggle('hidden', !mis.length);
+  document.getElementById('sec-mis').classList.toggle('hidden', !misAll.length);
   for (const r of mis) {
     lm.insertAdjacentHTML('beforeend',
       `<div class="flex items-center gap-3 bg-error/10 border border-error/40 rounded-xl p-2.5" data-mis="${r.call}">
@@ -663,6 +715,14 @@ function fillSheet(img, rows) {
         <div class="text-[11px] text-on-surface-variant">${r.title || ''}</div>
         <div class="text-[11px] text-error font-semibold">${r.guide || '제자리가 아니에요'}</div></div>
         <button class="text-[11px] bg-error/20 text-error rounded-lg px-2 py-1 pointer-events-none">근거</button></div>`);
+  }
+  for (const r of done) {                              // 조치 완료분 — 초록으로 남겨 업무 기록이 되게
+    lm.insertAdjacentHTML('beforeend',
+      `<div class="flex items-center gap-3 bg-primary/10 border border-primary/40 rounded-xl p-2.5 opacity-80">
+        <img src="${tsrc(img, r, 56)}" class="w-10 rounded border border-primary/50">
+        <div class="flex-1"><div class="font-mono-data text-sm font-semibold line-through">${r.call}</div>
+        <div class="text-[11px] text-on-surface-variant">${r.title || ''}</div></div>
+        <span class="text-[11px] text-primary font-semibold">✅ 재배열 완료</span></div>`);
   }
   lm.onclick = e => {                                  // 시트 오배열 항목 탭 → 근거 팝업
     const card = e.target.closest('[data-mis]'); if (!card) return;
@@ -904,7 +964,7 @@ async function toggleLive(analyze = true) {
           fillSheet(hi, merged);
           bagCrops(hi, hrows);
           snapReport(hi, hrows);                     // 리포트 재료: 원샷/프레임 복사 저장
-          const nMis = [...sessionBooks.values()].filter(b => b.mis).length;
+          const nMis = [...sessionBooks.values()].filter(b => b.mis && !b.resolved).length;
           const tgt = findTarget && hrows.find(r => r.call === findTarget.call);
           if (tgt) {                                 // 도서찾기 대상 발견 — 📍핀은 카메라 표시 좌표로 환산
             const ps = cam.videoWidth / dims(hi).W;
@@ -957,6 +1017,7 @@ document.getElementById('file').onchange = async ev => {
   document.getElementById('scan-title').textContent = '서가를 살펴보는 중…';
   await scanImage(img, '내 서가');
   ev.target.value = '';                              // 같은 파일 재선택 시 onchange 재발화
+  if (!(lastRows && lastRows.some(r => r.call))) showNoRead('file');
 };
 
 // ── 사서용 사진 점검: 네이티브 카메라 12MP 정지 촬영(라이브보다 픽셀 3배) → 판독 → 점검 기록 누적.
@@ -974,12 +1035,12 @@ document.getElementById('photocheck').onchange = async ev => {
   await scanImage(img, '📷 사진 점검');
   ev.target.value = '';
   if (lastRows && lastRows.some(r => r.call)) await logInspection();
-  else document.getElementById('scan-title').textContent += ' — 청구기호를 못 읽었어요, 더 가까이/밝게 다시 찍어보세요';
+  else showNoRead('photo');                          // 원인·재촬영 가이드 카드 (n17)
 };
 async function logInspection() {
   const { blob, ok, mis, books } = await buildReport();   // _repFrame(방금 사진) 기준 합성
   _inspLog.push({ blob, ts: Date.now(), ok, mis,
-                  books: books.map(b => ({ call: b.call, title: b.title || '', mis: !!b.mis })) });
+                  books: books.map(b => ({ call: b.call, title: b.title || '', mis: !!b.mis, resolved: !!b.resolved })) });
   const totMis = _inspLog.reduce((s, e) => s + e.mis, 0);
   const el = document.getElementById('insp-count');
   el.classList.remove('hidden');
@@ -1238,7 +1299,11 @@ async function buildReport() {
   const frame = _repFrame, repRows = _repRows;
   // 목록: 라이브면 세션 누적(투표 합산 전체), 사진이면 그 판독 결과
   const books = sessionBooks.size ? [...sessionBooks.values()] : repRows.filter(r => r.call);
-  const ok = books.filter(b => !b.mis).length, mis = books.filter(b => b.mis);
+  // 조치 완료분은 잘못꽂힘 목록에서 빠진다 (repRows는 판독 시점 복사본이라 현재 시트에서 완료 여부 참조)
+  const rset = new Set(_sheetRows.filter(x => x.mis && x.resolved).map(x => x.call));
+  const done = b => b.resolved || rset.has(b.call);
+  books.forEach(b => { if (done(b)) b.resolved = true; });
+  const ok = books.filter(b => !b.mis).length, mis = books.filter(b => b.mis && !b.resolved);
   const W = 1080, head = 96, ih = Math.round(frame.height * W / frame.width);
   const rowH = 76, listH = mis.length ? 48 + mis.length * rowH : 0, foot = 44;
   const c = mkCanvas(W, head + ih + listH + foot), x = c.getContext('2d');
@@ -1305,7 +1370,7 @@ async function buildReportZip() {
   zip.file('report.jpg', blob);
   zip.file('report.json', JSON.stringify({ source: 'LibAR report', date: new Date().toISOString(),
     device: navigator.userAgent.slice(0, 60), ok, mis,
-    books: books.map(b => ({ call: b.call, title: b.title || '', mis: !!b.mis })) }, null, 1));
+    books: books.map(b => ({ call: b.call, title: b.title || '', mis: !!b.mis, resolved: !!b.resolved })) }, null, 1));
   return { zip, ok, mis, n: 1 };
 }
 async function sendReport() {
