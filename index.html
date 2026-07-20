@@ -586,10 +586,12 @@ async function scanOnce(img, title) {
   renderAll(img, rows, `${title} — 청구기호를 읽는 중…`, false);
   const okRec = await recognizeAll(img, rows, m => document.getElementById('scan-title').textContent = m);
   const nOk = rows.filter(r => r.call && !r.mis).length, nMis = rows.filter(r => r.mis).length;
-  const tgt = okRec && findTarget && rows.find(r => r.call === findTarget.call);
+  const fc = okRec && findTarget ? findCandidates(rows) : null;
   renderAll(img, rows, !okRec ? `${title} — 책 ${rows.length}권 (인식 모델 로드 실패)`
-    : tgt ? `📍 찾는 책이 여기 있어요! · ${nOk}권 확인`
-          : `${title} — ${nOk}권 확인${nMis ? ` · ${nMis}권 의심` : ''}`);
+    : fc?.mode === 'hit' ? `📍 찾는 책이 여기 있어요! (일치 ${fc.list[0].p}%)`
+    : fc?.mode === 'cand' ? `📍 이 근처예요 — 후보 ${fc.list.length}권 (각 ${fc.list[0].p}%)`
+    : fc ? `이 화면엔 안 보여요${fc.dir ? ` — ${fc.dir} 서가로 이동해보세요` : ' — 조금 옆을 다시 찍어보세요'}`
+    : `${title} — ${nOk}권 확인${nMis ? ` · ${nMis}권 의심` : ''}`);
 }
 async function scanImage(img, title) {
   if (scanning) { document.getElementById('scan-title').textContent = '판독 중이에요 — 잠시만요'; return; }
@@ -637,9 +639,41 @@ function targetPin(ar, box, s, ox, oy, call) {
   hl.appendChild(pin);
   ar.appendChild(hl);
 }
+// ── 도서찾기 후보 추정: 직독 완전일치(정밀도 98% 실측) → 없으면 확정 이웃 사이 '틈'의
+//    미판독 박스를 후보로 (순서 추론 — 유일 후보 LOO 정밀도 100% 실측이라 1권=95%, K권=90/K%) ──
+function findCandidates(rows) {
+  const tk = sortkey(findTarget.call);
+  const hit = rows.find(r => r.call === findTarget.call);
+  if (hit) return { mode: 'hit', list: [{ row: hit, p: 98 }] };
+  const ord = rows.filter(r => r.call).sort((a, b) => a.band - b.band || a.box[0] - b.box[0]);
+  if (!ord.length) return { mode: 'none', dir: null };
+  let left = null, right = null;
+  for (const r of ord) { if (cmpKey(sortkey(r.call), tk) <= 0) left = r; else { right = r; break; } }
+  if (!left) return { mode: 'none', dir: '왼쪽' };       // 전부 타깃보다 뒤 → 더 앞(왼쪽) 서가
+  if (!right) return { mode: 'none', dir: '오른쪽' };
+  const inGap = r => !r.call
+    && (r.band > left.band || (r.band === left.band && r.box[0] > left.box[0]))
+    && (r.band < right.band || (r.band === right.band && r.box[0] < right.box[0]));
+  const cands = [];                                      // 같은 책 중복 박스는 하나로 (x중심 근접)
+  for (const r of rows.filter(inGap).sort((a, b) => a.box[0] - b.box[0])) {
+    const xc = (r.box[0] + r.box[2]) / 2, w = Math.max(1, r.box[2] - r.box[0]);
+    if (cands.length && Math.abs(xc - (cands[cands.length-1].box[0] + cands[cands.length-1].box[2]) / 2) < w * 0.6) continue;
+    cands.push(r);
+  }
+  if (!cands.length) return { mode: 'none', dir: null };
+  const top = cands.slice(0, 3);
+  const p = top.length === 1 ? 95 : Math.round(90 / top.length);
+  return { mode: 'cand', list: top.map(r => ({ row: r, p })) };
+}
 function drawBoxes(img, rows) {
   const { s, ox, oy } = fitRect(img);
   const ar = document.getElementById('ar'); ar.innerHTML = '';
+  if (findTarget && !live) {                             // 도서찾기 정지 화면: 찾는 책(후보)만 남긴다
+    const fc = findCandidates(rows);
+    for (const { row, p } of fc.list || [])
+      targetPin(ar, row.box, s, ox, oy, `${fc.mode === 'hit' ? findTarget.call : '후보'} · ${p}%`);
+    return;
+  }
   for (const r of rows) {
     const [x0, y0, x1, y1] = r.box;
     const d = document.createElement('div');
