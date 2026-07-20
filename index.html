@@ -59,20 +59,31 @@ tailwind.config = { darkMode:"class", theme:{ extend:{
   </header>
 
   <div class="space-y-4 pt-4">
-    <!-- (이용자) 도서 찾기 -->
-    <button onclick="openFind()" class="relative w-full bg-surface-container border border-outline-variant rounded-2xl p-6 text-left space-y-2">
+    <!-- (이용자) 도서 찾기 — manyfast n2 카드 구조: 아이콘+제목 행 / 부제 / 설명 / 시작 버튼 -->
+    <div class="relative w-full bg-surface-container border border-outline-variant rounded-2xl p-5 space-y-3">
       <span class="absolute top-3 right-4 text-[11px] bg-surface-variant/60 text-on-surface-variant rounded-full px-2.5 py-0.5">이용자</span>
-      <span class="material-symbols-outlined text-5xl text-primary">search</span>
-      <div class="font-bold text-2xl">도서 찾기</div>
+      <div class="flex items-center gap-3">
+        <span class="material-symbols-outlined text-4xl text-primary bg-primary/10 rounded-full p-2">search</span>
+        <div><div class="font-bold text-xl">도서 찾기</div>
+          <div class="text-xs text-on-surface-variant">도서 검색 · AR 탐색</div></div>
+      </div>
       <div class="text-sm text-on-surface-variant">읽고 싶은 책이 어느 서가, 어느 칸에 있는지 안내해드려요</div>
-    </button>
-    <!-- (사서) 서가 점검하기 -->
-    <button onclick="enterScan()" class="relative w-full bg-primary-container text-on-primary-container rounded-2xl p-6 text-left space-y-2 shadow-lg" style="animation:pulse-glow 2.5s infinite">
+      <button onclick="openFind()" class="w-full bg-surface-variant/60 border border-outline-variant rounded-xl py-2.5 text-sm font-bold">도서 찾기 시작</button>
+    </div>
+    <!-- (사서) 서가 점검하기 — 점검 현황(대시보드)과 즉시 스캔 두 진입 -->
+    <div class="relative w-full bg-primary-container text-on-primary-container rounded-2xl p-5 space-y-3 shadow-lg">
       <span class="absolute top-3 right-4 text-[11px] bg-background/25 rounded-full px-2.5 py-0.5">사서</span>
-      <span class="material-symbols-outlined text-5xl">photo_camera</span>
-      <div class="font-bold text-2xl">서가 점검하기</div>
-      <div class="text-sm opacity-85">서가를 비추며 걸으면 잘못 꽂힌 책을 찾아드려요</div>
-    </button>
+      <div class="flex items-center gap-3">
+        <span class="material-symbols-outlined text-4xl bg-background/20 rounded-full p-2">photo_camera</span>
+        <div><div class="font-bold text-xl">서가 점검하기</div>
+          <div class="text-xs opacity-85">오배열 탐지 · 점검 현황 관리</div></div>
+      </div>
+      <div class="text-sm opacity-85">서가를 비추거나 사진을 찍으면 잘못 꽂힌 책을 찾아드려요</div>
+      <div class="flex gap-2">
+        <button onclick="show('dash')" class="flex-1 bg-background/20 rounded-xl py-2.5 text-sm font-bold">점검 현황</button>
+        <button onclick="enterScan()" class="flex-1 bg-primary text-on-primary rounded-xl py-2.5 text-sm font-bold" style="animation:pulse-glow 2.5s infinite">지금 점검 시작</button>
+      </div>
+    </div>
   </div>
 
   <footer class="text-center text-xs text-on-surface-variant space-y-1 pt-2">
@@ -81,6 +92,38 @@ tailwind.config = { darkMode:"class", theme:{ extend:{
     <details class="text-[10px] opacity-60"><summary class="cursor-pointer">개발자 정보</summary>
       <span class="font-mono-data">인식 v4 · 검출 v3 · <span id="home-backend">-</span></span></details>
   </footer>
+</div>
+
+<!-- ═══════ 사서 점검 현황 (manyfast n5의 서버 없는 축약 — 세션 KPI + 기기 저장 전송 기록) ═══════ -->
+<div id="view-dash" class="view max-w-md mx-auto px-4 py-6 space-y-4">
+  <header class="flex items-center gap-2">
+    <span class="material-symbols-outlined text-primary cursor-pointer" onclick="show('home')">arrow_back</span>
+    <h1 class="text-xl font-bold">서가 점검 현황</h1>
+  </header>
+  <div class="flex gap-2">
+    <button onclick="enterScan()" class="flex-1 bg-primary text-on-primary rounded-xl py-3 text-sm font-bold">🔴 라이브 스캔</button>
+    <button onclick="show('scan'); document.getElementById('photocheck').click()"
+            class="flex-1 bg-primary-container text-on-primary-container rounded-xl py-3 text-sm font-bold">📷 사진 점검</button>
+  </div>
+  <div class="grid grid-cols-3 gap-2 text-center">
+    <div class="bg-surface-container border border-outline-variant rounded-xl p-3">
+      <div class="text-[11px] text-on-surface-variant">확인</div>
+      <div id="d-ok" class="text-2xl font-bold text-primary">0</div>
+      <div class="text-[10px] text-on-surface-variant">이번 세션</div></div>
+    <div class="bg-surface-container border border-outline-variant rounded-xl p-3">
+      <div class="text-[11px] text-on-surface-variant">오배열</div>
+      <div id="d-mis" class="text-2xl font-bold text-error">0</div>
+      <div class="text-[10px] text-on-surface-variant">미조치</div></div>
+    <div class="bg-surface-container border border-outline-variant rounded-xl p-3">
+      <div class="text-[11px] text-on-surface-variant">조치 완료</div>
+      <div id="d-done" class="text-2xl font-bold">0</div>
+      <div id="d-photos" class="text-[10px] text-on-surface-variant">점검 사진 0장</div></div>
+  </div>
+  <div class="bg-surface-container border border-outline-variant rounded-xl p-3 space-y-2">
+    <div class="text-sm font-bold">전송한 점검 기록</div>
+    <div id="dash-log" class="divide-y divide-outline-variant text-sm"></div>
+    <div class="text-[10px] text-on-surface-variant">📋 리포트를 보낼 때마다 이 기기에 기록돼요 — 서버·계정 없이</div>
+  </div>
 </div>
 
 <!-- ═══════ 도서 찾기 화면 ═══════ -->
@@ -147,23 +190,28 @@ tailwind.config = { darkMode:"class", theme:{ extend:{
     </div>
   </header>
 
-  <!-- 부가 기능 (시트 위 우하단): 사진 업로드 + 샘플 사진 -->
+  <!-- 부가 기능 (시트 위 우하단, manyfast n12 정리): 사서용 3개 노출 · 팀·개발용은 ⋯ 접기 -->
   <div class="fixed right-3 z-40 flex flex-col items-end gap-1.5" style="bottom:130px; pointer-events:auto">
     <label class="bg-primary/90 text-on-primary backdrop-blur border border-primary rounded-lg px-3 py-2 text-xs font-bold cursor-pointer">
       📷 사진 점검 (사서용)<input type="file" accept="image/*" capture="environment" id="photocheck" class="hidden"></label>
     <div id="insp-count" class="hidden bg-surface-container/85 backdrop-blur border border-outline-variant rounded-md px-2 py-1 text-[10px] text-on-surface-variant"></div>
     <label class="bg-surface-container/85 backdrop-blur border border-outline-variant rounded-lg px-3 py-2 text-xs font-bold cursor-pointer">
       🖼 사진 업로드<input type="file" accept="image/*" id="file" class="hidden"></label>
-    <div class="flex gap-1.5 text-[10px]">
-      <button onclick="loadDemo(1)" class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-on-surface-variant">샘플 서가·광각</button>
-      <button onclick="loadDemo(2)" class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-on-surface-variant">샘플 서가·각도</button>
-    </div>
-    <button onclick="toggleCollect()" id="btn-collect"
-            class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-[10px] text-on-surface-variant">📦 수집 모드 (팀용)</button>
-    <button onclick="exportCrops()" id="btn-crops"
-            class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-[10px] text-on-surface-variant">📦 학습용 조각 제공 (동의)</button>
     <button onclick="sendReport()" id="btn-report"
-            class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-[10px] text-on-surface-variant">📋 결과 리포트 → 드라이브</button>
+            class="bg-surface-container/85 backdrop-blur border border-outline-variant rounded-lg px-3 py-2 text-xs font-bold">📋 결과 리포트 → 드라이브</button>
+    <details class="text-right">
+      <summary class="inline-block bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-[10px] text-on-surface-variant cursor-pointer list-none">⋯ 팀·개발 기능</summary>
+      <div class="flex flex-col items-end gap-1.5 mt-1.5">
+        <div class="flex gap-1.5 text-[10px]">
+          <button onclick="loadDemo(1)" class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-on-surface-variant">샘플 서가·광각</button>
+          <button onclick="loadDemo(2)" class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-on-surface-variant">샘플 서가·각도</button>
+        </div>
+        <button onclick="toggleCollect()" id="btn-collect"
+                class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-[10px] text-on-surface-variant">📦 수집 모드 (팀용)</button>
+        <button onclick="exportCrops()" id="btn-crops"
+                class="bg-surface-container/70 border border-outline-variant rounded-md px-2 py-1 text-[10px] text-on-surface-variant">📦 학습용 조각 제공 (동의)</button>
+      </div>
+    </details>
     <div id="upbar" class="hidden w-40 h-1 rounded-full bg-surface-variant/50 overflow-hidden">
       <div class="h-full w-1/3 rounded-full bg-primary" style="animation:upslide 1.1s ease-in-out infinite"></div>
     </div>
@@ -216,7 +264,33 @@ let sess = null, lastRows = null, lastImg = null, lastMs = 0, expanded = false, 
 
 function show(v) { document.querySelectorAll('.view').forEach(e => e.classList.remove('active'));
   document.getElementById('view-' + v).classList.add('active');
+  if (v === 'dash') renderDash();
   if (v === 'home') { findTarget = null; liveFound = null; } }   // 홈 복귀 = 도서찾기 대상 해제
+
+// ── 사서 점검 현황 (manyfast n5 축약): 전부 실데이터 — 세션 요약 + 리포트 전송 시 기기 저장 ──
+function renderDash() {
+  const books = sessionBooks.size ? [...sessionBooks.values()] : _sheetRows.filter(r => r.call);
+  const misAll = books.filter(b => b.mis);
+  document.getElementById('d-ok').textContent = books.filter(b => !b.mis).length;
+  document.getElementById('d-mis').textContent = misAll.filter(b => !b.resolved).length;
+  document.getElementById('d-done').textContent = misAll.filter(b => b.resolved).length;
+  document.getElementById('d-photos').textContent = `점검 사진 ${_inspLog.length}장`;
+  const log = JSON.parse(localStorage.getItem('libar_dash') || '[]');
+  const el = document.getElementById('dash-log');
+  el.innerHTML = log.length ? '' :
+    '<div class="py-2 text-on-surface-variant text-xs">아직 전송한 기록이 없어요 — 점검 후 📋 리포트를 보내면 쌓여요</div>';
+  for (const e of log.slice(-7).reverse())
+    el.insertAdjacentHTML('beforeend',
+      `<div class="flex justify-between py-1.5"><span>${e.d}</span>
+        <span class="text-on-surface-variant">사진 ${e.photos} · <span class="text-primary">확인 ${e.ok}</span> ·
+        <span class="${e.mis ? 'text-error' : ''}">오배열 ${e.mis}</span>${e.done ? ` · ✅${e.done}` : ''}</span></div>`);
+}
+function saveDashLog(ok, mis, done, photos) {
+  const log = JSON.parse(localStorage.getItem('libar_dash') || '[]');
+  log.push({ d: new Date().toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+             ok, mis, done, photos });
+  localStorage.setItem('libar_dash', JSON.stringify(log.slice(-30)));   // 최근 30건만 보관
+}
 // 서가 점검·길안내에서 진입 시 카메라 자동 시작 (사진 업로드·샘플 서가는 부가 기능)
 function enterScan() { show('scan'); if (!collectMode) ensureRec(); if (!live) toggleLive(); }
 
@@ -1364,14 +1438,15 @@ async function buildReportZip() {
         ok: e.ok, mis: e.mis, books: e.books });
     });
     zip.file('summary.json', JSON.stringify(summary, null, 1));
-    return { zip, ok: summary.items.reduce((s, p) => s + p.ok, 0), mis: summary.totMis, n: _inspLog.length };
+    return { zip, ok: summary.items.reduce((s, p) => s + p.ok, 0), mis: summary.totMis, n: _inspLog.length,
+             done: summary.items.reduce((s, p) => s + p.books.filter(b => b.resolved).length, 0) };
   }
   const { blob, ok, mis, books } = await buildReport();   // 라이브·단발: 최근 프레임 1장
   zip.file('report.jpg', blob);
   zip.file('report.json', JSON.stringify({ source: 'LibAR report', date: new Date().toISOString(),
     device: navigator.userAgent.slice(0, 60), ok, mis,
     books: books.map(b => ({ call: b.call, title: b.title || '', mis: !!b.mis, resolved: !!b.resolved })) }, null, 1));
-  return { zip, ok, mis, n: 1 };
+  return { zip, ok, mis, n: 1, done: books.filter(b => b.resolved).length };
 }
 async function sendReport() {
   if (!_inspLog.length && !_repFrame) { alert('판독 결과가 아직 없어요 — 먼저 서가를 스캔해주세요'); return; }
@@ -1383,13 +1458,14 @@ async function sendReport() {
   const btn = document.getElementById('btn-report');
   try {
     btn.textContent = _inspLog.length ? `📋 점검 ${_inspLog.length}장 묶는 중…` : '📋 리포트 만드는 중…';
-    const { zip } = await buildReportZip();
+    const { zip, ok, mis, n, done } = await buildReportZip();
     const b64 = await zip.generateAsync({ type: 'base64' });
     btn.textContent = `📤 리포트 전송 중… (${Math.round(b64.length * 0.75 / 1024)}KB)`;
     await fetch(UPLOAD_URL, { method: 'POST', mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({ name: `libar_report_${Date.now()}.zip`, zip: b64 }) });
     btn.textContent = '✅ 리포트 전송됨 — 드라이브 수신함';
+    saveDashLog(ok, mis, done || 0, n);               // 점검 현황(대시보드) 기기 기록
   } catch(e) {
     console.error('리포트 전송 실패', e);
     btn.textContent = '⚠️ 전송 실패 — 잠시 후 다시 눌러주세요';
