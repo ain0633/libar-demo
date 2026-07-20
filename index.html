@@ -568,7 +568,9 @@ function drawBoxes(img, rows) {
     const [x0, y0, x1, y1] = r.box;
     const d = document.createElement('div');
     d.style.cssText = `position:absolute;left:${x0*s+ox}px;top:${y0*s+oy}px;width:${(x1-x0)*s}px;height:${(y1-y0)*s}px;border-radius:2px;`;
-    if (r.mis) { d.style.border = '2px solid rgba(255,107,100,.95)'; d.style.background = 'rgba(255,107,100,.18)'; }
+    if (r.mis) { d.style.border = '2px solid rgba(255,107,100,.95)'; d.style.background = 'rgba(255,107,100,.18)';
+                 d.style.cursor = 'pointer'; d.style.pointerEvents = 'auto';   // 탭 → 왜 오배열인지 근거
+                 d.onclick = () => showReason(r, rows); }
     else if (r.call || r.live) { d.style.border = '2px solid rgba(75,226,119,.85)'; d.style.background = 'rgba(75,226,119,.12)'; }
     else { d.style.border = '1px solid rgba(134,149,133,.55)'; d.style.background = 'rgba(45,52,73,.22)'; }
     ar.appendChild(d);
@@ -582,6 +584,54 @@ function drawBoxes(img, rows) {
   }
 }
 
+// ── 오배열 근거: 왜 제자리가 아닌가 — 물리적 현재 이웃 vs 청구기호 순서상 있어야 할 이웃 ──
+//    (LIS 판정이 이미 가진 밴드·청구기호로 계산 — 새 연산·데이터 없음. 사서 신뢰도용.)
+function misplaceReason(row, allRows) {
+  const seq = allRows.filter(r => r.band === row.band && r.call)
+                     .sort((a, b) => a.box[0] - b.box[0]);   // 물리적 좌→우
+  const i = seq.indexOf(row);
+  const phys = { left: i > 0 ? seq[i - 1].call : null,
+                 right: i >= 0 && i < seq.length - 1 ? seq[i + 1].call : null };
+  // 올바른 자리 = 정상(오배열 아님) 책들을 청구기호 순으로 세웠을 때 이 책이 들어갈 틈
+  const anchors = seq.filter(r => !r.mis && r !== row)
+                     .sort((a, b) => cmpKey(sortkey(a.call), sortkey(b.call)));
+  const k = sortkey(row.call);
+  let expL = null, expR = null;
+  for (const a of anchors) {
+    if (cmpKey(sortkey(a.call), k) <= 0) expL = a.call; else { expR = a.call; break; }
+  }
+  return { call: row.call, title: row.title || '', phys, exp: { left: expL, right: expR } };
+}
+let _reasonPop = null;
+function showReason(row, allRows) {
+  const r = misplaceReason(row, allRows);
+  if (!_reasonPop) {
+    _reasonPop = document.createElement('div');
+    _reasonPop.id = 'reasonPop';
+    _reasonPop.style.cssText = 'position:fixed;left:50%;bottom:132px;transform:translateX(-50%);z-index:50;'
+      + 'width:min(340px,90vw);background:#141a14;border:1px solid #ff6b64;border-radius:14px;'
+      + 'padding:16px;box-shadow:0 8px 32px rgba(0,0,0,.5);font-family:sans-serif';
+    document.body.appendChild(_reasonPop);
+    _reasonPop.addEventListener('click', e => { if (e.target.dataset.close !== undefined) hideReason(); });
+  }
+  const slot = c => c ? `<span style="font-family:monospace;color:#e8f0e6">${c}</span>`
+                      : `<span style="color:#7a8a78">서가 끝</span>`;
+  _reasonPop.innerHTML =
+    `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+       <b style="color:#ff6b64;font-size:15px">❗ 제자리가 아니에요</b>
+       <span data-close style="color:#9fb39c;cursor:pointer;font-size:20px;line-height:1;padding:0 4px">✕</span></div>
+     <div style="font-family:monospace;color:#e8f0e6;font-size:16px;font-weight:600">${r.call}</div>
+     ${r.title ? `<div style="color:#9fb39c;font-size:12px;margin-bottom:10px">${r.title}</div>` : '<div style="margin-bottom:10px"></div>'}
+     <div style="font-size:13px;color:#9fb39c;line-height:1.7">
+       <div>지금 꽂힌 곳 &nbsp;${slot(r.phys.left)} <span style="color:#7a8a78">↔</span> ${slot(r.phys.right)} 사이</div>
+       <div>올바른 자리 &nbsp;${slot(r.exp.left)} <span style="color:#7a8a78">↔</span> ${slot(r.exp.right)} 사이</div></div>
+     <button data-close style="margin-top:12px;width:100%;background:#4be277;color:#003915;border:0;
+       border-radius:10px;padding:9px;font-weight:700;font-size:13px;cursor:pointer">확인했어요</button>`;
+  _reasonPop.classList.remove('hidden');
+  _reasonPop.style.display = 'block';
+}
+function hideReason() { if (_reasonPop) _reasonPop.style.display = 'none'; }
+
 // 사진에서 박스 영역 썸네일 크롭
 function thumb(img, box, w = 72) {
   const [x0, y0, x1, y1] = box.map(Math.round);
@@ -594,7 +644,9 @@ function thumb(img, box, w = 72) {
 
 // ▼ 실시간 결과 시트 채우기 — 화면 전환 없음
 function tsrc(img, r, w) { return r.thumbData || thumb(img, r.box, w); }   // 누적분은 저장된 썸네일
+let _sheetRows = [];
 function fillSheet(img, rows) {
+  _sheetRows = rows;                                  // 시트 항목 탭 → 근거 조회용
   const ok = rows.filter(r => r.call && !r.mis), mis = rows.filter(r => r.mis), gray = rows.filter(r => !r.call);
   document.getElementById('c-ok').textContent = ok.length;
   document.getElementById('c-mis').textContent = mis.length;
@@ -605,13 +657,18 @@ function fillSheet(img, rows) {
   document.getElementById('sec-mis').classList.toggle('hidden', !mis.length);
   for (const r of mis) {
     lm.insertAdjacentHTML('beforeend',
-      `<div class="flex items-center gap-3 bg-error/10 border border-error/40 rounded-xl p-2.5">
+      `<div class="flex items-center gap-3 bg-error/10 border border-error/40 rounded-xl p-2.5" data-mis="${r.call}">
         <img src="${tsrc(img, r, 56)}" class="w-10 rounded border border-error/50">
         <div class="flex-1"><div class="font-mono-data text-sm font-semibold">${r.call}</div>
         <div class="text-[11px] text-on-surface-variant">${r.title || ''}</div>
         <div class="text-[11px] text-error font-semibold">${r.guide || '제자리가 아니에요'}</div></div>
-        <button class="text-[11px] bg-error/20 text-error rounded-lg px-2 py-1">해결</button></div>`);
+        <button class="text-[11px] bg-error/20 text-error rounded-lg px-2 py-1 pointer-events-none">근거</button></div>`);
   }
+  lm.onclick = e => {                                  // 시트 오배열 항목 탭 → 근거 팝업
+    const card = e.target.closest('[data-mis]'); if (!card) return;
+    const row = _sheetRows.find(r => r.call === card.dataset.mis && r.mis);
+    if (row) showReason(row, _sheetRows);
+  };
   const lo = document.getElementById('list-ok'); lo.innerHTML = '';
   for (const r of ok) {
     lo.insertAdjacentHTML('beforeend',
