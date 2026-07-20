@@ -590,6 +590,8 @@ async function scanOnce(img, title) {
   renderAll(img, rows, !okRec ? `${title} — 책 ${rows.length}권 (인식 모델 로드 실패)`
     : fc?.mode === 'hit' ? `📍 찾는 책이 여기 있어요! (일치 ${fc.list[0].p}%)`
     : fc?.mode === 'cand' ? `📍 이 근처예요 — 후보 ${fc.list.length}권 (각 ${fc.list[0].p}%)`
+    : fc?.sec ? `여기가 아니에요 — ${fc.sec} 서가로 가세요 (검색에서 지도 안내를 볼 수 있어요)`
+    : fc?.dir && fc.n ? `이 화면엔 없어요 — ${fc.dir}으로 약 ${fc.n}권 옆이에요${fc.n <= 60 ? ' (이 칸 끝이나 옆 칸을 비춰 보세요)' : ''}`
     : fc ? `이 화면엔 안 보여요${fc.dir ? ` — ${fc.dir} 서가로 이동해보세요` : ' — 조금 옆을 다시 찍어보세요'}`
     : `${title} — ${nOk}권 확인${nMis ? ` · ${nMis}권 의심` : ''}`);
 }
@@ -641,6 +643,23 @@ function targetPin(ar, box, s, ox, oy, call) {
 }
 // ── 도서찾기 후보 추정: 직독 완전일치(정밀도 98% 실측) → 없으면 확정 이웃 사이 '틈'의
 //    미판독 박스를 후보로 (순서 추론 — 유일 후보 LOO 정밀도 100% 실측이라 1권=95%, K권=90/K%) ──
+// 화면 밖이면 데이터가 뒷받침하는 안내만: 카탈로그 순서(=서가 배가 순서) 권수 거리 + 구간(sec) 비교.
+// 칸(단) 수 안내는 서가 구조 데이터가 없어 하지 않는다 — 틀린 "두 칸 아래"는 침묵보다 해롭다.
+let _findOrd = null, _findPos = null;
+function findOrder() {
+  if (!_findOrd && _catRaw) {
+    _findOrd = _catRaw.map(b => ({ call: b.call, sec: b.sec, k: sortkey(b.call) }))
+                      .sort((a, b) => cmpKey(a.k, b.k));
+    _findPos = new Map(_findOrd.map((b, i) => [b.call, i]));
+  }
+  return _findOrd;
+}
+function farInfo(edgeCall) {                             // {n: 권수 거리, sec: 구간이 다르면 타깃 구간}
+  const ord = findOrder();
+  const ti = _findPos?.get(findTarget.call), ei = _findPos?.get(edgeCall);
+  if (ti == null || ei == null) return {};               // 카탈로그 밖(비정상)이면 방향만 안내
+  return { n: Math.abs(ti - ei), sec: ord[ti].sec !== ord[ei].sec ? ord[ti].sec : null };
+}
 function findCandidates(rows) {
   const tk = sortkey(findTarget.call);
   const hit = rows.find(r => r.call === findTarget.call);
@@ -649,8 +668,8 @@ function findCandidates(rows) {
   if (!ord.length) return { mode: 'none', dir: null };
   let left = null, right = null;
   for (const r of ord) { if (cmpKey(sortkey(r.call), tk) <= 0) left = r; else { right = r; break; } }
-  if (!left) return { mode: 'none', dir: '왼쪽' };       // 전부 타깃보다 뒤 → 더 앞(왼쪽) 서가
-  if (!right) return { mode: 'none', dir: '오른쪽' };
+  if (!left) return { mode: 'none', dir: '왼쪽', ...farInfo(ord[0].call) };   // 전부 타깃보다 뒤 → 더 앞(왼쪽)
+  if (!right) return { mode: 'none', dir: '오른쪽', ...farInfo(left.call) };
   const inGap = r => !r.call
     && (r.band > left.band || (r.band === left.band && r.box[0] > left.box[0]))
     && (r.band < right.band || (r.band === right.band && r.box[0] < right.box[0]));
