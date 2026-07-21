@@ -822,10 +822,24 @@ function thumb(img, box, w = 72) {
 
 // ▼ 실시간 결과 시트 채우기 — 화면 전환 없음
 function tsrc(img, r, w) { return r.thumbData || thumb(img, r.box, w); }   // 누적분은 저장된 썸네일
+// 같은 책 중복 박스 판정(x중심 0.6폭 + 세로 30% 겹침) — "다시 확인" 집계 전용.
+// 판독·토큰 배정의 rows는 그대로 둔다(중복 박스도 회수엔 유용) — 화면 숫자만 정직하게.
+function sameBook(a, b) {
+  const w = Math.max(1, Math.min(a.box[2] - a.box[0], b.box[2] - b.box[0]));
+  const yOv = Math.min(a.box[3], b.box[3]) - Math.max(a.box[1], b.box[1]);
+  return Math.abs((a.box[0] + a.box[2]) / 2 - (b.box[0] + b.box[2]) / 2) < w * 0.6
+      && yOv > 0.3 * Math.min(a.box[3] - a.box[1], b.box[3] - b.box[1]);
+}
+function grayRows(rows) {                              // 미판독 집계: 확인된 책과 겹치면 제외, 서로 겹치면 1권
+  const read = rows.filter(r => r.call), out = [];
+  for (const r of rows.filter(r => !r.call).sort((a, b) => a.box[0] - b.box[0]))
+    if (!read.some(o => sameBook(r, o)) && !out.some(o => sameBook(r, o))) out.push(r);
+  return out;
+}
 let _sheetRows = [];
 function fillSheet(img, rows) {
   _sheetRows = rows;                                  // 시트 항목 탭 → 근거 조회용
-  const ok = rows.filter(r => r.call && !r.mis), misAll = rows.filter(r => r.mis), gray = rows.filter(r => !r.call);
+  const ok = rows.filter(r => r.call && !r.mis), misAll = rows.filter(r => r.mis), gray = grayRows(rows);
   const mis = misAll.filter(r => !r.resolved), done = misAll.filter(r => r.resolved);
   document.getElementById('c-ok').textContent = ok.length;
   document.getElementById('c-mis').textContent = mis.length;
@@ -1050,10 +1064,11 @@ async function toggleLive(analyze = true) {
     rows.forEach(r => r.live = true);
     drawBoxes(cam, rows);
     n++; tSum += lastMs;
+    const seen = grayRows(rows).length;                // 중복 박스 병합 후 권수 — 카운터 부풀림 방지
     document.getElementById('scan-title').textContent =
-      readMsg || (collectMode ? `📦 수집 모드 — 책 ${rows.length}권 보임`
-                              : `📚 책 ${rows.length}권 보임 — 겨누고 있으면 자동으로 읽어요`);
-    document.getElementById('c-gray').textContent = rows.length;
+      readMsg || (collectMode ? `📦 수집 모드 — 책 ${seen}권 보임`
+                              : `📚 책 ${seen}권 보임 — 겨누고 있으면 자동으로 읽어요`);
+    document.getElementById('c-gray').textContent = seen;
     document.getElementById('dev-info').innerHTML =
       `라이브 검출 ${(1000/(tSum/n)).toFixed(1)} FPS · ${lastMs.toFixed(0)}ms/프레임 · ${backend} · ${cam.videoWidth}×${cam.videoHeight}${_hiInfo ? ' · ' + _hiInfo : ''}`;
     // ── 자동 판독: 화면이 안정되면(박스 수 유지) 그 프레임을 그 자리에서 판독 — 일시정지 불필요 ──
