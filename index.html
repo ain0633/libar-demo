@@ -995,6 +995,24 @@ async function hiShot(fallback) {
   _hiInfo = '';
   return fallback;
 }
+// 셔터 패턴: 판독 중엔 방금 캡처한 정지 화면을 표시 — iOS 해상도 재협상 블랙·GPU 포화로
+// 카메라가 멈춰 보이는 20~40초를 "찍어서 읽는 중" 화면으로 바꾼다 (연산 추가 0)
+let _stillUrl = null;
+async function showStill(frame) {
+  const photo = document.getElementById('photo');
+  if (frame.toDataURL) photo.src = frame.toDataURL('image/jpeg', .8);
+  else {                                               // OffscreenCanvas 기기엔 toDataURL이 없다 (리포트 합성 때와 동일)
+    const url = URL.createObjectURL(await frame.convertToBlob({ type: 'image/jpeg', quality: .8 }));
+    if (_stillUrl) URL.revokeObjectURL(_stillUrl);
+    _stillUrl = url; photo.src = url;
+  }
+  document.getElementById('cam').classList.add('hidden');
+}
+function hideStill() {
+  const cam = document.getElementById('cam');
+  cam.classList.remove('hidden');
+  cam.play?.().catch(() => {});
+}
 async function toggleLive(analyze = true) {
   const cam = document.getElementById('cam'), photo = document.getElementById('photo'),
         btn = document.getElementById('btn-live');
@@ -1086,14 +1104,20 @@ async function toggleLive(analyze = true) {
       }
     } else if (stable && rows.length >= 5 && !scanning && Date.now() - lastRead > 18000) {   // 원샷 판독이 무거워져 간격 12→18초 (발열·피크 인하)
       scanning = true;
+      let stillOn = false;
       try {
         // 첫 판독의 rec 준비(48MB 다운로드, 몇 분 가능)를 원샷보다 먼저 — 전환 상태 방치 금지
         const recReady = await ensureRec(m => { readMsg = `🔍 ${m} — 카메라는 계속 비춰도 돼요`;
           document.getElementById('scan-title').textContent = readMsg; });
         // A안: 판독 순간만 고해상 원샷 — 실패 시 hi === fc(현재 프레임)라 기존 동작과 동일
         const hi = recReady && live && gen === liveGen ? await hiShot(fc) : fc;
+        if (live && gen === liveGen) {                 // 셔터: 찍은 화면을 보여주며 읽는다
+          await showStill(hi); stillOn = true;
+          readMsg = '📸 화면을 찍었어요 — 읽는 동안 폰을 내려놔도 돼요 (20초 정도)';
+          document.getElementById('scan-title').textContent = readMsg;
+        }
         const hrows = hi === fc ? rows : await detect(hi, 1280);
-        const okRec = await recognizeAll(hi, hrows, m => { readMsg = `🔍 ${m} — 카메라는 계속 비춰도 돼요`;
+        const okRec = await recognizeAll(hi, hrows, m => { readMsg = `📸 ${m} — 폰을 내려놔도 돼요`;
           document.getElementById('scan-title').textContent = readMsg; });
         if (okRec && live && gen === liveGen) {
           let nNew = 0;                              // 프레임 투표 합산: 세션에 누적 (덮어쓰기 금지)
@@ -1122,7 +1146,10 @@ async function toggleLive(analyze = true) {
       } catch(e) {
         console.error('자동 판독 실패', e);
         if ((backend === 'WebGPU' || recBackend === 'WebGPU') && !rebuilt) await rebuildWasm();
-      } finally { scanning = false; lastRead = Date.now(); }
+      } finally {
+        scanning = false; lastRead = Date.now();
+        if (stillOn && live && gen === liveGen) hideStill();   // 일시정지·회전으로 넘어갔으면 그쪽 화면 유지
+      }
     }
     // 검출 페이싱: 연속 풀가동은 폰을 몇 분 만에 발열 한계로 몰아 서멀 스로틀링을 부른다 —
     // 프레임 간격에 바닥을 깔아 가동률을 낮춘다. 박스 0개가 3초 이어지면(서가를 안 비추는 중)
