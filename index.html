@@ -134,9 +134,15 @@ tailwind.config = { darkMode:"class", theme:{ extend:{
     <span class="material-symbols-outlined text-primary cursor-pointer" onclick="show('home')">arrow_back</span>
     <h1 class="text-xl font-bold">도서 찾기</h1>
   </header>
+  <!-- 이용자 선택지: 검색 / 추천도서 / 인기대출 (탐색 진입은 이용자 동선으로 — 스캔 화면 아님) -->
+  <div class="flex gap-2">
+    <button onclick="findTab('search')" id="ftab-search" class="flex-1 bg-primary/25 text-primary border border-primary/50 rounded-xl py-2.5 text-sm font-bold">🔍 검색</button>
+    <button onclick="findTab('rec')" id="ftab-rec" class="flex-1 bg-surface-container border border-outline-variant rounded-xl py-2.5 text-sm font-bold">⭐ 추천도서</button>
+    <button onclick="findTab('pop')" id="ftab-pop" class="flex-1 bg-surface-container border border-outline-variant rounded-xl py-2.5 text-sm font-bold">🔥 인기대출</button>
+  </div>
   <input id="find-q" type="search" placeholder="제목이나 청구기호를 입력하세요"
          class="w-full bg-surface-container border border-outline-variant rounded-xl px-4 py-3 text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:ring-0">
-  <p class="text-xs text-on-surface-variant">등록 장서 <span id="find-n">-</span> — 스캔할수록 정확한 위치가 늘어나요</p>
+  <p id="find-hint" class="text-xs text-on-surface-variant">등록 장서 <span id="find-n">-</span> — 스캔할수록 정확한 위치가 늘어나요</p>
   <div id="find-list" class="bg-surface-container border border-outline-variant rounded-xl divide-y divide-outline-variant max-h-[60vh] overflow-y-auto"></div>
 </div>
 
@@ -192,12 +198,10 @@ tailwind.config = { darkMode:"class", theme:{ extend:{
     </div>
   </header>
 
-  <!-- 이용자 탐색 (좌하단): 도서관 데이터 하이라이트 — 🔥인기대출(정보나루)·⭐사서추천(국립중앙도서관) -->
-  <div class="fixed left-3 z-40 flex flex-col gap-1.5" style="bottom:130px; pointer-events:auto">
-    <button onclick="toggleDisc('pop')" id="btn-pop"
-            class="bg-surface-container/85 backdrop-blur border border-outline-variant rounded-lg px-3 py-2 text-xs font-bold">🔥 인기대출</button>
-    <button onclick="toggleDisc('rec')" id="btn-rec"
-            class="bg-surface-container/85 backdrop-blur border border-outline-variant rounded-lg px-3 py-2 text-xs font-bold">⭐ 사서추천</button>
+  <!-- 이용자 탐색 상태 알림표 (도서찾기의 추천/인기 탭에서 들어온 경우에만 표시 — 사서 점검 화면은 무관) -->
+  <div id="disc-pill" class="hidden fixed left-3 z-40 bg-primary/90 text-on-primary rounded-lg px-3 py-2 text-xs font-bold"
+       style="bottom:130px; pointer-events:auto">
+    <span id="disc-pill-text"></span> <span class="cursor-pointer opacity-80" onclick="setDiscMode(null)">✕</span>
   </div>
   <!-- 탐색 서지 팝업 (제목·저자·추천사) -->
   <div id="discPop" style="display:none" class="fixed inset-x-4 bottom-36 z-50 bg-surface-container border border-primary/50 rounded-2xl p-4 space-y-1.5 shadow-2xl"></div>
@@ -277,7 +281,7 @@ let sess = null, lastRows = null, lastImg = null, lastMs = 0, expanded = false, 
 function show(v) { document.querySelectorAll('.view').forEach(e => e.classList.remove('active'));
   document.getElementById('view-' + v).classList.add('active');
   if (v === 'dash') renderDash();
-  if (v === 'home') { findTarget = null; liveFound = null; } }   // 홈 복귀 = 도서찾기 대상 해제
+  if (v === 'home') { findTarget = null; liveFound = null; setDiscMode(null); } }   // 홈 복귀 = 찾기·탐색 해제
 
 // ── 사서 점검 현황 (manyfast n5 축약): 전부 실데이터 — 세션 요약 + 리포트 전송 시 기기 저장 ──
 function renderDash() {
@@ -742,16 +746,19 @@ async function discData(kind) {
   }
   return _disc[kind];
 }
-async function toggleDisc(kind) {
-  discMode = discMode === kind ? null : kind;
+function setDiscMode(kind) {                           // 탐색 상태 전환 (도서찾기 탭 → 스캔 핀)
+  discMode = kind;
   hideDisc();
-  for (const [id, k] of [['btn-pop', 'pop'], ['btn-rec', 'rec']])
-    document.getElementById(id).className = (discMode === k
-      ? 'bg-primary/90 text-on-primary border border-primary'
-      : 'bg-surface-container/85 backdrop-blur border border-outline-variant')
-      + ' rounded-lg px-3 py-2 text-xs font-bold';
-  if (discMode) await discData(discMode);
+  const pill = document.getElementById('disc-pill');
+  pill.classList.toggle('hidden', !kind);
+  if (kind) document.getElementById('disc-pill-text').textContent =
+    kind === 'pop' ? '🔥 인기대출 표시 중' : '⭐ 추천도서 표시 중';
   if (lastImg && lastRows) drawBoxes(lastImg, lastRows);
+}
+async function toggleDisc(kind) {                      // 프로그램용 토글 (탭·테스트에서 사용)
+  const next = discMode === kind ? null : kind;
+  if (next) await discData(next);
+  setDiscMode(next);
   if (discMode && lastRows) {
     const m = _disc[discMode], n = lastRows.filter(r => r.call && m.has(r.call)).length;
     const name = kind === 'pop' ? '인기대출 도서' : '사서추천 도서';
@@ -1311,15 +1318,54 @@ async function openFind() {
       const cat = await loadCatalogRaw();
       findIdx = cat.map(c => ({ ...c, loc: located.get(c.call) || null }));
       findIdx.sort((a, b) => (b.loc ? 1 : 0) - (a.loc ? 1 : 0) || a.call.localeCompare(b.call, 'ko'));
+      _findByCall = new Map(findIdx.map(b => [b.call, b]));
       findN = { total: findIdx.length, loc: [...located.keys()].length };
     } catch(e) { findIdx = null;
       document.getElementById('find-n').textContent = '장서목록을 불러오지 못했어요';
       show('find'); return; }
   }
   document.getElementById('find-n').textContent = `${findN.total}권 (정확한 위치 확인 ${findN.loc}권)`;
-  renderFind('');
+  await findTab(findTabKind);
   show('find');
-  document.getElementById('find-q').focus();
+  if (findTabKind === 'search') document.getElementById('find-q').focus();
+}
+// ── 도서찾기 탭: 검색 / ⭐추천도서(국중도) / 🔥인기대출(정보나루) — 이용자 선택지 ──
+let findTabKind = 'search', _findByCall = null;
+async function findTab(kind) {
+  findTabKind = kind;
+  for (const k of ['search', 'rec', 'pop'])
+    document.getElementById('ftab-' + k).className = 'flex-1 rounded-xl py-2.5 text-sm font-bold ' +
+      (k === kind ? 'bg-primary/25 text-primary border border-primary/50'
+                  : 'bg-surface-container border border-outline-variant');
+  const search = kind === 'search';
+  document.getElementById('find-q').classList.toggle('hidden', !search);
+  document.getElementById('find-hint').classList.toggle('hidden', !search);
+  if (search) { setDiscMode(null); renderFind(document.getElementById('find-q').value || ''); }
+  else { await discData(kind); setDiscMode(kind); renderDiscList(kind); }
+}
+function renderDiscList(kind) {
+  const el = document.getElementById('find-list'); el.innerHTML = '';
+  const cta = document.createElement('div');
+  cta.className = 'p-3 text-xs font-semibold text-primary bg-primary/10';
+  cta.textContent = kind === 'pop'
+    ? '🔥 최근 1년 전국에서 많이 빌린 책 중 이 도서관 소장분이에요 — 서가 앞에서 스캔하면 핀이 떠요'
+    : '⭐ 국립중앙도서관 사서추천 중 이 도서관 소장분이에요 — 서가에서 스캔하면 핀과 추천사가 떠요';
+  el.appendChild(cta);
+  const secOf = c => { const m = /^(\d{3})/.exec(c); return m ? String(Math.floor(+m[1] / 100) * 100).padStart(3, '0') + '번대' : '기타'; };
+  const items = [...(_disc[kind]?.values() || [])]
+    .sort((a, b) => kind === 'pop' ? (b.loan || 0) - (a.loan || 0) : String(b.ym || '').localeCompare(String(a.ym || '')));
+  for (const b of items.slice(0, 100)) {
+    const d = document.createElement('div');
+    d.className = 'p-3 flex justify-between items-center gap-2 cursor-pointer active:bg-surface-variant/40';
+    d.innerHTML = `<div class="min-w-0"><div class="text-sm truncate">${b.title || '(제목 미상)'}</div>
+      <div class="font-mono-data text-xs text-on-surface-variant truncate">${b.author || ''} · ${b.call} · ${secOf(b.call)} 서가</div></div>
+      <span class="shrink-0 text-[11px] ${kind === 'pop' ? 'bg-surface-variant/60 text-on-surface-variant' : 'bg-primary/20 text-primary'} rounded px-2 py-1">
+        ${kind === 'pop' ? `${Number(b.loan || 0).toLocaleString()}회` : (b.ym || '추천')}</span>`;
+    d.onclick = () => { const fb = _findByCall?.get(b.call);
+      fb ? (fb.loc ? locate({ ...fb, ...fb.loc }) : guideSection(fb))
+         : guideSection({ call: b.call, sec: secOf(b.call), room: '3층 종합자료실' }); };
+    el.appendChild(d);
+  }
 }
 let findN = null;
 function renderFind(q) {
