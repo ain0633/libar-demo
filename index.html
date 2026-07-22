@@ -1146,6 +1146,7 @@ async function toggleLive(analyze = true) {
     }
     if (expanded || document.hidden) {               // 시트가 화면을 덮거나 백그라운드 — 아무도 못 보는
       _paceRest = -1;                                // 검출은 순수 발열. 시트 접으면 다음 프레임 즉시 재개
+      if (document.hidden) fc = null;                // 백그라운드엔 프레임 캔버스(8MB)도 내려놓는다 — 복귀 시 재생성
       await new Promise(r => setTimeout(r, 300)); continue;
     }
     const tFrame = performance.now();
@@ -1511,6 +1512,8 @@ async function bagCrops(img, rows) {
     cropBag.push({ blob: await new Promise(res => c.toBlob(res, 'image/jpeg', .92)),
                    call: r.call, how: r.how, box: [x0, y0, x1, y1], scan: sid });
   }
+  // 미동의 대기분 상한 300개(≈6MB): 동의 없는 긴 라이브 세션이 블랍을 무한 누적해 탭 회수(크래시)로 가는 것 차단
+  if (!optin() && cropBag.length > 300) cropBag.splice(0, cropBag.length - 300);
   // 동의 상태면 자동 업로드 — 수집 모드는 4초 주기라 24개 이상 모아 배치 전송 (드라이브 잘게 쌓임 방지)
   if (optin()) { if (!collectMode || cropBag.length >= 24) await flushBag(); }
   else document.getElementById('btn-crops').textContent = `📦 학습용 조각 ${cropBag.length}개 제공 (동의)`;
@@ -1537,6 +1540,14 @@ let uploading = false;
 // 있어 보장은 아니지만, 성공하면 새로고침·탭 회수로 인한 미전송분(최대 23개) 유실을 막는다
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden' && optin() && cropBag.length && !uploading) flushBag();
+});
+// 백그라운드 = iOS가 메모리 큰 탭부터 회수 — 카메라 앱 다녀오면 "문제가 반복적으로 발생"
+// 크래시가 되는 경로(7/22 현장). 재생성 가능한 대형 버퍼(_det 캐시 ~41MB, 원샷 캔버스 ~15MB)를
+// 즉시 놓아 회수 문턱 아래로 내린다. detect는 지역 참조로 진행 중 판독에 안전, 다음 호출 때 재생성 — 화질·속도 무변화
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'hidden') return;
+  for (const k in _det) delete _det[k];
+  _hiCnv = null;
 });
 async function flushBag() {
   if (!cropBag.length || uploading || !UPLOAD_URL) return;
