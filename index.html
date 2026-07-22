@@ -1090,11 +1090,39 @@ async function showStill(frame) {
     _stillUrl = url; photo.src = url;
   }
   document.getElementById('cam').classList.add('hidden');
+  // 판독(20~40초) 동안 카메라 센서 휴면 — 정지 화면 뒤에서 ISP·오토포커스가 도는 건 순수 발열.
+  // enabled 토글은 재협상이 없어(applyConstraints와 달리) iOS 블랙 위험 낮음, 복귀는 hideStill서
+  if (stream) stream.getVideoTracks().forEach(t => t.enabled = false);
 }
 function hideStill() {
+  if (stream) stream.getVideoTracks().forEach(t => t.enabled = true);
   const cam = document.getElementById('cam');
   cam.classList.remove('hidden');
   cam.play?.().catch(() => {});
+}
+// ── 정지 화면 검출 게이트(발열): 겨눔 자세에선 화면이 안 변하는데도 매 사이클 검출을 새로 돈다 —
+// 32×24 그레이 다운샘플 평균차(~3ms)로 변화량을 재서, 정지면 직전 박스 재사용(같은 장면 = 같은 박스,
+// 결과 동일·연산만 생략). 움직임 감지 즉시 정상 검출 복귀 = 반응성 손실 0. 안전망: 연속 3회까지만
+// 생략(최대 ~1.8s 뒤 강제 검출) — 문턱 아래 미세 변화가 쌓여도 박스가 낡지 못하게 한다
+let _motCnv = null, _motPrev = null, _motSkip = 0, _motRows = null, _motVal = -1;
+function frameDiff(src) {
+  if (!_motCnv) _motCnv = mkCanvas(32, 24);
+  const g = _motCnv.getContext('2d', { willReadFrequently: true });
+  g.drawImage(src, 0, 0, 32, 24);
+  const d = g.getImageData(0, 0, 32, 24).data;
+  const cur = new Float32Array(768);
+  let sum = 0;
+  for (let i = 0, j = 0; j < 768; i += 4, j++) {
+    cur[j] = (d[i] + d[i+1] + d[i+2]) / 3;
+    if (_motPrev) sum += Math.abs(cur[j] - _motPrev[j]);
+  }
+  const diff = _motPrev ? sum / 768 : 255;
+  _motPrev = cur;
+  return diff;
+}
+function motGate(diff) {                   // true = 이번 사이클 검출 생략 (직전 박스 재사용)
+  if (diff < 3 && _motRows && _motSkip < 3) { _motSkip++; return true; }
+  _motSkip = 0; return false;
 }
 async function toggleLive(analyze = true) {
   const cam = document.getElementById('cam'), photo = document.getElementById('photo'),
@@ -1102,7 +1130,8 @@ async function toggleLive(analyze = true) {
   if (live) {                                        // 일시정지: 멈춘 화면을 그 자리에서 판독
     live = false; liveGen++;                         // 옛 루프 즉시 무효화
     let frame = null;
-    if (analyze && cam.videoWidth) {                 // 사진/샘플 전환(analyze=false)은 캡처 생략
+    // 사진/샘플 전환(analyze=false)은 캡처 생략. 셔터 중(센서 휴면)은 검은 프레임뿐이라 캡처 무의미
+    if (analyze && cam.videoWidth && stream?.getVideoTracks().every(t => t.enabled)) {
       frame = document.createElement('canvas');
       frame.width = cam.videoWidth; frame.height = cam.videoHeight;
       frame.getContext('2d').drawImage(cam, 0, 0);
@@ -1129,6 +1158,7 @@ async function toggleLive(analyze = true) {
   setSheet(false);
   if (!_rotRestart) sessionBooks.clear();            // 새 라이브 세션 = 누적 초기화 (회전 재시작은 유지)
   _rotRestart = false;
+  _motPrev = null; _motSkip = 0; _motRows = null;    // 정지 게이트 초기화 — 이전 세션 장면과 오매칭 방지
   // 라이브 시작: 이전 사진/데모의 시트 잔상 제거
   for (const id of ['c-ok', 'c-mis']) document.getElementById(id).textContent = '0';
   for (const id of ['list-mis', 'list-ok', 'list-gray']) document.getElementById(id).innerHTML = '';
@@ -1154,8 +1184,10 @@ async function toggleLive(analyze = true) {
     if (!fc || fc.width !== cam.videoWidth || fc.height !== cam.videoHeight)
       fc = mkCanvas(cam.videoWidth, cam.videoHeight);
     fc.getContext('2d').drawImage(cam, 0, 0);
+    const skipped = motGate(_motVal = frameDiff(fc)); // 정지 화면이면 검출 생략(직전 박스 재사용 — 결과 동일)
     let rows;
-    try { rows = await detect(fc, 960); }
+    if (skipped) rows = _motRows;
+    else try { rows = _motRows = await detect(fc, 960); }
     catch(e) {                                       // WebGPU 추론 실패 기기 → WASM 재구축 후 계속
       console.error('라이브 검출 실패', e);
       if (backend === 'WebGPU' && !rebuilt && await rebuildWasm()) continue;
@@ -1165,14 +1197,15 @@ async function toggleLive(analyze = true) {
     if (!live || gen !== liveGen) break;             // 정지·재시작 후 늦게 깬 낡은 루프는 그리지 않고 종료
     rows.forEach(r => r.live = true);
     drawBoxes(cam, rows);
-    n++; tSum += lastMs;
+    if (!skipped) { n++; tSum += lastMs; }           // FPS 통계는 실제 검출만
     const seen = grayRows(rows).length;                // 중복 박스 병합 후 권수 — 카운터 부풀림 방지
     document.getElementById('scan-title').textContent =
       readMsg || (collectMode ? `📦 수집 모드 — 책 ${seen}권 보임`
                               : `📚 책 ${seen}권 보임 — 겨누고 있으면 자동으로 읽어요`);
     document.getElementById('c-gray').textContent = seen;
     document.getElementById('dev-info').innerHTML =
-      `라이브 검출 ${(1000/(tSum/n)).toFixed(1)} FPS · ${lastMs.toFixed(0)}ms/프레임 · ${backend} · ${cam.videoWidth}×${cam.videoHeight}${_hiInfo ? ' · ' + _hiInfo : ''}`;
+      `라이브 검출 ${(1000/(tSum/n)).toFixed(1)} FPS · ${lastMs.toFixed(0)}ms/프레임 · ${backend} · ${cam.videoWidth}×${cam.videoHeight}`
+      + ` · 변화 ${_motVal.toFixed(1)}${skipped ? ' 🧊생략' : ''}${_hiInfo ? ' · ' + _hiInfo : ''}`;
     // ── 자동 판독: 화면이 안정되면(박스 수 유지) 그 프레임을 그 자리에서 판독 — 일시정지 불필요 ──
     const stable = prevN >= 0 && Math.abs(rows.length - prevN) <= Math.max(2, rows.length * 0.2);
     prevN = rows.length;
