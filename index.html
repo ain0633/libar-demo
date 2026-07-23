@@ -914,7 +914,7 @@ function sameBook(a, b) {
       && yOv > 0.3 * Math.min(a.box[3] - a.box[1], b.box[3] - b.box[1]);
 }
 function grayRows(rows) {                              // 미판독 집계: 확인된 책과 겹치면 제외, 서로 겹치면 1권
-  const read = rows.filter(r => r.call), out = [];
+  const read = rows.filter(r => r.call && r.box), out = [];   // box 없는 항목(구버전 누적분 등) 좌표 비교 방어
   for (const r of rows.filter(r => !r.call).sort((a, b) => a.box[0] - b.box[0]))
     if (!read.some(o => sameBook(r, o)) && !out.some(o => sameBook(r, o))) out.push(r);
   return out;
@@ -1240,8 +1240,10 @@ async function toggleLive(analyze = true) {
           let nNew = 0;                              // 프레임 투표 합산: 세션에 누적 (덮어쓰기 금지)
           for (const r of hrows) if (r.call) {
             if (!sessionBooks.has(r.call)) nNew++;
+            // band·box 동승 — 시트 병합분이 grayRows(sameBook)·misplaceReason의 좌표 접근에 안전해야 함
+            // (7/23 현장 크래시: box 없는 누적분이 sameBook의 b.box[2]에서 TypeError → 판독 결과 유실 + WASM 강등)
             sessionBooks.set(r.call, { call: r.call, title: r.title, mis: !!r.mis,
-                                       thumbData: thumb(hi, r.box, 56) });
+                                       band: r.band, box: r.box, thumbData: thumb(hi, r.box, 56) });
           }
           const merged = [...sessionBooks.values()].concat(hrows.filter(r => !r.call));
           fillSheet(hi, merged);
