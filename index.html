@@ -337,7 +337,7 @@ sheet.addEventListener('touchend', e => { if (ty0 === null) return;
   if (dy < -40) setSheet(true); else if (dy > 40) setSheet(false); });
 
 // ── 버전 표기(사용자 요청): 배포할 때마다 아래 두 값만 갱신 — 홈 하단 개발자 정보·브라우저 탭에 표시 ──
-const APP_VER = 'v1.0', APP_UPDATED = '2026-07-23 18:05';
+const APP_VER = 'v1.1', APP_UPDATED = '2026-07-24 18:14';
 document.getElementById('app-ver').textContent = `${APP_VER} · ${APP_UPDATED} 업데이트`;
 document.title = `LibAR ${APP_VER} — 서가 스캔`;
 
@@ -1248,7 +1248,7 @@ async function toggleLive(analyze = true) {
             // band·box 동승 — 시트 병합분이 grayRows(sameBook)·misplaceReason의 좌표 접근에 안전해야 함
             // (7/23 현장 크래시: box 없는 누적분이 sameBook의 b.box[2]에서 TypeError → 판독 결과 유실 + WASM 강등)
             sessionBooks.set(r.call, { call: r.call, title: r.title, mis: !!r.mis,
-                                       band: r.band, box: r.box, thumbData: thumb(hi, r.box, 56) });
+                                       band: r.band, how: r.how, box: r.box, thumbData: thumb(hi, r.box, 56) });
           }
           const merged = [...sessionBooks.values()].concat(hrows.filter(r => !r.call));
           fillSheet(hi, merged);
@@ -1333,7 +1333,7 @@ document.getElementById('photocheck').onchange = async ev => {
 async function logInspection() {
   const { blob, ok, mis, books } = await buildReport();   // _repFrame(방금 사진) 기준 합성
   _inspLog.push({ blob, ts: Date.now(), ok, mis,
-                  books: books.map(b => ({ call: b.call, title: b.title || '', mis: !!b.mis, resolved: !!b.resolved })) });
+                  books: books.map(b => ({ call: b.call, title: b.title || '', mis: !!b.mis, resolved: !!b.resolved, band: b.band, how: b.how })) });
   const totMis = _inspLog.reduce((s, e) => s + e.mis, 0);
   const el = document.getElementById('insp-count');
   el.classList.remove('hidden');
@@ -1634,7 +1634,7 @@ function snapReport(img, rows) {
   const c = mkCanvas(Math.round(W * s), Math.round(H * s));
   c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
   _repFrame = c;                         // 박스도 스냅샷 좌표계로 함께 축소
-  _repRows = rows.map(r => ({ box: r.box.map(v => v * s), call: r.call, mis: !!r.mis, title: r.title, guide: r.guide }));
+  _repRows = rows.map(r => ({ box: r.box.map(v => v * s), call: r.call, mis: !!r.mis, title: r.title, guide: r.guide, band: r.band, how: r.how }));
 }
 async function buildReport() {
   // 스냅샷을 지역으로 고정 — 합성 도중(await 사이) 라이브 자동 판독이 갈아끼워도 프레임이 안 섞이게
@@ -1713,7 +1713,7 @@ async function buildReportZip() {
   zip.file('report.jpg', blob);
   zip.file('report.json', JSON.stringify({ source: 'LibAR report', date: new Date().toISOString(),
     device: navigator.userAgent.slice(0, 60), ok, mis,
-    books: books.map(b => ({ call: b.call, title: b.title || '', mis: !!b.mis, resolved: !!b.resolved })) }, null, 1));
+    books: books.map(b => ({ call: b.call, title: b.title || '', mis: !!b.mis, resolved: !!b.resolved, band: b.band, how: b.how })) }, null, 1));
   return { zip, ok, mis, n: 1, done: books.filter(b => b.resolved).length };
 }
 async function sendReport() {
