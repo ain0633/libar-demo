@@ -31,6 +31,7 @@ if (location.hash.includes('debug')) {
 <style>
   @keyframes pulse-glow { 0%{box-shadow:0 0 0 0 rgba(75,226,119,.4)} 70%{box-shadow:0 0 0 10px rgba(75,226,119,0)} 100%{box-shadow:0 0 0 0 rgba(75,226,119,0)} }
   @keyframes upslide { 0%{transform:translateX(-100%)} 100%{transform:translateX(400%)} }
+  @keyframes spin { to{transform:rotate(360deg)} }
   .material-symbols-outlined { font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24; }
   .view { display:none; } .view.active { display:block; }
   #sheet { transition:transform .28s cubic-bezier(.3,.9,.3,1); }
@@ -183,6 +184,11 @@ tailwind.config = { darkMode:"class", theme:{ extend:{
   <div class="absolute inset-0 bg-black">
     <img id="photo" class="absolute inset-0 w-full h-full object-contain" alt="">
     <video id="cam" class="absolute inset-0 w-full h-full object-contain hidden" autoplay muted playsinline></video>
+    <!-- 셔터 판독 오버레이: 정지 화면이 "멈춤·오류"로 보이지 않게 — 스피너가 살아있음을 증명 -->
+    <div id="still-ov" class="absolute inset-0 pointer-events-none flex-col items-center justify-center gap-3" style="display:none;background:rgba(0,0,0,.45)">
+      <div style="width:44px;height:44px;border:4px solid rgba(75,226,119,.25);border-top-color:#4be277;border-radius:50%;animation:spin 1s linear infinite"></div>
+      <div id="still-msg" class="text-sm font-bold text-white text-center px-8" style="text-shadow:0 1px 4px rgba(0,0,0,.8)"></div>
+    </div>
   </div>
   <div id="ar" class="absolute inset-0 pointer-events-none"></div>
 
@@ -208,7 +214,7 @@ tailwind.config = { darkMode:"class", theme:{ extend:{
 
   <!-- 부가 기능 (시트 위 우하단, manyfast n12 정리): 사서용 3개 노출 · 팀·개발용은 ⋯ 접기 -->
   <div class="fixed right-3 z-40 flex flex-col items-end gap-1.5" style="bottom:130px; pointer-events:auto">
-    <label class="bg-primary/90 text-on-primary backdrop-blur border border-primary rounded-lg px-3 py-2 text-xs font-bold cursor-pointer">
+    <label id="btn-photocheck" class="bg-primary/90 text-on-primary backdrop-blur border border-primary rounded-lg px-3 py-2 text-xs font-bold cursor-pointer">
       📷 사진 점검 (사서용)<input type="file" accept="image/*" capture="environment" id="photocheck" class="hidden"></label>
     <div id="insp-count" class="hidden bg-surface-container/85 backdrop-blur border border-outline-variant rounded-md px-2 py-1 text-[10px] text-on-surface-variant"></div>
     <label class="bg-surface-container/85 backdrop-blur border border-outline-variant rounded-lg px-3 py-2 text-xs font-bold cursor-pointer">
@@ -281,7 +287,9 @@ let sess = null, lastRows = null, lastImg = null, lastMs = 0, expanded = false, 
 function show(v) { document.querySelectorAll('.view').forEach(e => e.classList.remove('active'));
   document.getElementById('view-' + v).classList.add('active');
   if (v === 'dash') renderDash();
-  if (v === 'home') { findTarget = null; liveFound = null; setDiscMode(null); } }   // 홈 복귀 = 찾기·탐색 해제
+  if (v === 'home') { findTarget = null; setDiscMode(null); }        // 홈 복귀 = 찾기·탐색 해제
+  // 찾기 모드(이용자)의 스캔 화면엔 사서용 사진 점검 버튼을 숨긴다 (07-25 사용자 요청)
+  if (v === 'scan') document.getElementById('btn-photocheck').classList.toggle('hidden', !!findTarget); }
 
 // ── 사서 점검 현황 (manyfast n5 축약): 전부 실데이터 — 세션 요약 + 리포트 전송 시 기기 저장 ──
 function renderDash() {
@@ -337,7 +345,7 @@ sheet.addEventListener('touchend', e => { if (ty0 === null) return;
   if (dy < -40) setSheet(true); else if (dy > 40) setSheet(false); });
 
 // ── 버전 표기(사용자 요청): 배포할 때마다 아래 두 값만 갱신 — 홈 하단 개발자 정보·브라우저 탭에 표시 ──
-const APP_VER = 'v1.1', APP_UPDATED = '2026-07-24 18:14';
+const APP_VER = 'v1.2', APP_UPDATED = '2026-07-25 17:05';
 document.getElementById('app-ver').textContent = `${APP_VER} · ${APP_UPDATED} 업데이트`;
 document.title = `LibAR ${APP_VER} — 서가 스캔`;
 
@@ -589,11 +597,34 @@ async function recognizeAll(img, rows, onMsg) {
     extras.push(...assignTokens(rb, toks, txt => matchCall(txt, recIdx)));
   }
   rows.push(...extras);                                // 클러스터 채널 회수 라벨
+  rowContextGate(rows);
   if (!_risk) _risk = buildRiskGroups(await loadCatalogRaw());
   await titleArbitrate(img, rows);                     // 위험군 한정 선별 제목 대조 (~2% 책만 발동)
   lastRecMs = performance.now() - t0;
-  flagMisplaced(rows);                                 // 오배열 플래그는 직독(청구기호)만
+  judgeRows(rows);
   return true;
+}
+// 오배열 플래그는 직독(청구기호)만. 찾기 모드(이용자)는 판정 자체를 생략 —
+// 책 찾는 화면에 빨간 경보를 띄우지 않는다 (07-25 사용자 요청)
+function judgeRows(rows) { if (!findTarget) flagMisplaced(rows); }
+// ── 행 문맥 게이트(07-25 현장 확정: 511 서가에서 182.2·327.856 오탐 2건) — 저자 폴백(0.9)은
+// 분류 문맥 없이 전 장서를 뒤지므로, 첫 글자 오독(임→양·에→메)과 겹치면 남의 구간 책을 데려온다.
+// 같은 줄 직독 계열(≥0.95) 분류에서 ±10 넘게 동떨어진 폴백 매칭은 판독 보류(⚪ 다시 확인)로 강등.
+// 트레이드오프: 진짜 원거리 오배열이 '분류 미독+저자 유일'로만 잡히는 희귀 케이스를 잃는다 — 정밀도 우선.
+// (근거리 오독 구제 573.53→673.53류는 매칭 분류가 줄 문맥과 가까워 통과 — 07-14 규약 유지)
+function rowContextGate(rows) {
+  let n = 0;
+  for (const b of new Set(rows.map(r => r.band))) {
+    const seq = rows.filter(r => r.band === b && r.call);
+    const anchors = seq.filter(r => r.score >= 0.95).map(r => sortkey(r.call)[0]);
+    if (!anchors.length) continue;                     // 직독이 하나도 없는 줄은 증거 부족 — 건드리지 않는다
+    for (const r of seq) {
+      if (r.score !== 0.9) continue;
+      const c = sortkey(r.call)[0];
+      if (!anchors.some(a => Math.abs(a - c) < 10)) { r.call = null; r.title = null; r.how = null; n++; }
+    }
+  }
+  return n;
 }
 
 // 공통 스캔 경로: 검출 → (진행 표시) → 인식·대조·판정 → 최종 렌더
@@ -650,7 +681,6 @@ function fitRect(el) {
 
 // AR 오버레이 (사진 위 실좌표 박스) — 도서찾기 대상 책은 📍핀으로 강조
 let findTarget = null;                                 // {call, title} — 길안내에서 설정
-let liveFound = null;                                  // 라이브 자동 판독에서 찾은 위치 {box, until}
 function targetPin(ar, box, s, ox, oy, call) {
   const [x0, y0, x1, y1] = box;
   const hl = document.createElement('div');
@@ -725,17 +755,28 @@ function drawBoxes(img, rows) {
     else { d.style.border = '1px solid rgba(134,149,133,.55)'; d.style.background = 'rgba(45,52,73,.22)'; }
     ar.appendChild(d);
   }
-  if (findTarget) {                                    // 정지 화면: 판독 결과에서 찾는 책 짚기
-    const hit = rows.find(r => r.call === findTarget.call);
-    if (hit) targetPin(ar, hit.box, s, ox, oy, findTarget.call);
-    // 라이브: 직전 자동 판독에서 본 위치를 잠시 유지 (사용자가 카메라를 크게 안 움직였다는 가정)
-    else if (liveFound && Date.now() < liveFound.until)
-      targetPin(ar, liveFound.box, s, ox, oy, findTarget.call);
-  }
+  // (제거됨 07-25) 라이브 중 핀 잔존 경로: findTarget 정지 화면은 위 조기 return이 전담하므로
+  // 여기 도달하는 findTarget 렌더는 라이브뿐이었고, 폴백 판독(hi===fc)이 라이브 rows에 call을 심으면
+  // 매 프레임 판독 시점 좌표로 핀을 그려 폰을 내리면 바닥을 가리켰다 — 핀은 foundStop 정지 사진에서만
   if (discMode && !live) {                             // 이용자 탐색: 인기대출·사서추천 도서 하이라이트
     const m = _disc[discMode] || new Map();
     for (const r of rows) if (r.call && m.has(r.call)) discPin(ar, r, s, ox, oy, m.get(r.call));
   }
+}
+// 도서찾기 발견 시 라이브 정지: 라이브 화면 위 핀은 폰을 내리는 순간 엉뚱한 곳(바닥)을 가리킨다 —
+// (07-25 현장 피드백). 찍힌 사진은 좌표가 불변이라 그 위에 핀을 그리고 멈춘다. 재개 = ▶ 버튼(일시정지와 동일)
+function foundStop(hrows) {
+  live = false; liveGen++;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  document.getElementById('btn-live').textContent = '▶ 재개';
+  document.getElementById('still-ov').style.display = 'none';    // 스피너만 내리고 찍힌 사진은 유지
+  const photo = document.getElementById('photo');
+  // 정지 사진을 최신 렌더 상태로 등록 — iOS는 주소창 개폐만으로 resize를 발사하고, resize 핸들러가
+  // lastImg(이전 사진 스캔)의 낡은 rows로 #ar를 다시 그려 핀을 지웠다(멘트만 남는 간헐 증상, 07-25 현장)
+  lastImg = photo; lastRows = hrows; lastLocate = null;
+  drawBoxes(photo, hrows);                                       // live=false + findTarget → 핀만 렌더
+  document.getElementById('scan-title').textContent =
+    `📍 찾는 책이 여기 있어요! — ${(findTarget.title || findTarget.call).slice(0, 14)} (사진 속 위치예요)`;
 }
 
 // ── 이용자 탐색: 서가 화면 위에 도서관 데이터를 겹쳐 보인다 — 정적 동봉 데이터(월 1회 오프라인 갱신,
@@ -1039,6 +1080,14 @@ const sessionBooks = new Map();            // 라이브 세션 누적: call → 
 // ①ImageCapture.takePhoto(안드로이드, 진짜 고해상) ②스트림 해상도 순간 승격→캡처→원복(iOS 경로)
 // ③둘 다 실패면 현재 프레임 그대로 = 기존 동작 — 어느 단이 잡혔는지 dev-info에 표시
 let _hiCnv = null, _hiInfo = '';
+function isBlackFrame(cnv) {       // 재협상 스톨 캡처 감지: 32×24 평균 밝기 — 실제 서가는 어두워도 훨씬 밝다
+  const s = mkCanvas(32, 24), g = s.getContext('2d', { willReadFrequently: true });
+  g.drawImage(cnv, 0, 0, 32, 24);
+  const d = g.getImageData(0, 0, 32, 24).data;
+  let sum = 0;
+  for (let i = 0; i < d.length; i += 4) sum += d[i] + d[i + 1] + d[i + 2];
+  return sum / (d.length / 4 * 3) < 5;
+}
 async function hiShot(fallback) {
   const track = stream?.getVideoTracks?.()[0];
   const fw = fallback.width;
@@ -1067,14 +1116,23 @@ async function hiShot(fallback) {
       // 4K(8.3MP)는 판독 피크가 WebKit 탭 예산을 때려 jetsam 크래시 루프(16 Pro 현장 실증) —
       // 2560(3.7MP)이면 픽셀 1.8배 이득은 유지하면서 메모리·발열 절반 이하
       await track.applyConstraints({ width: { ideal: 2560 }, height: { ideal: 1440 } });
-      await new Promise(r => setTimeout(r, 350));      // 스트림 재협상 대기
+      // iOS는 해상도 재협상 후 <video>를 정지 상태로 둘 수 있다(스트림 생존·화면만 블랙) —
+      // 재생을 캡처 앞으로: 멈춘 비디오를 350ms 뒤에 drawImage하면 검은 프레임을 "찍고"
+      // 그 검은 정지 화면이 판독 20초 내내 떠서 오류처럼 보인다 (07-24 현장 리포트)
+      cam.play?.().catch(() => {});
+      await new Promise(r => {                         // 재협상 뒤 실제 프레임 도착까지 대기
+        if (cam.requestVideoFrameCallback) {
+          const t = setTimeout(r, 700);                //   프레임이 영영 안 오면(스톨) 타임아웃
+          cam.requestVideoFrameCallback(() => { clearTimeout(t); r(); });
+        } else setTimeout(r, 350);                     //   rVFC 미지원 기기는 기존 대기 유지
+      });
       let c = null;
       if (live && cam.videoWidth > fw) {
         c = grab(cam, cam.videoWidth, cam.videoHeight);
-        _hiInfo = `원샷 ${c.width}×${c.height} ⬆`;
+        if (isBlackFrame(c)) c = null;                 // 그래도 검은 캡처면 폐기 — 폴백(직전 라이브 프레임)이 낫다
+        else _hiInfo = `원샷 ${c.width}×${c.height} ⬆`;
       }
       await track.applyConstraints({ width: { ideal: 1920 } }).catch(() => {});
-      // iOS는 해상도 재협상 후 <video>를 정지 상태로 둘 수 있다(스트림 생존·화면만 블랙) — 강제 재생
       cam.play?.().catch(() => {});
       if (c) return c;
     } catch(e) {}
@@ -1095,12 +1153,16 @@ async function showStill(frame) {
     _stillUrl = url; photo.src = url;
   }
   document.getElementById('cam').classList.add('hidden');
+  document.getElementById('still-ov').style.display = 'flex';   // 스피너 오버레이 — 멈춤·오류가 아니라 진행 중
+  stillMsg('📸 찍었어요 — 읽는 동안 폰을 내려놔도 돼요');
   // 판독(20~40초) 동안 카메라 센서 휴면 — 정지 화면 뒤에서 ISP·오토포커스가 도는 건 순수 발열.
   // enabled 토글은 재협상이 없어(applyConstraints와 달리) iOS 블랙 위험 낮음, 복귀는 hideStill서
   if (stream) stream.getVideoTracks().forEach(t => t.enabled = false);
 }
+function stillMsg(m) { document.getElementById('still-msg').textContent = m; }
 function hideStill() {
   if (stream) stream.getVideoTracks().forEach(t => t.enabled = true);
+  document.getElementById('still-ov').style.display = 'none';
   const cam = document.getElementById('cam');
   cam.classList.remove('hidden');
   cam.play?.().catch(() => {});
@@ -1110,17 +1172,20 @@ function hideStill() {
 // 결과 동일·연산만 생략). 움직임 감지 즉시 정상 검출 복귀 = 반응성 손실 0. 안전망: 연속 3회까지만
 // 생략(최대 ~1.8s 뒤 강제 검출) — 문턱 아래 미세 변화가 쌓여도 박스가 낡지 못하게 한다
 let _motCnv = null, _motPrev = null, _motSkip = 0, _motRows = null, _motVal = -1;
+let _motLum = 255, _blackN = 0;            // 평균 밝기·연속 블랙 프레임 수 — 블랙아웃 워치독용
 function frameDiff(src) {
   if (!_motCnv) _motCnv = mkCanvas(32, 24);
   const g = _motCnv.getContext('2d', { willReadFrequently: true });
   g.drawImage(src, 0, 0, 32, 24);
   const d = g.getImageData(0, 0, 32, 24).data;
   const cur = new Float32Array(768);
-  let sum = 0;
+  let sum = 0, lum = 0;
   for (let i = 0, j = 0; j < 768; i += 4, j++) {
     cur[j] = (d[i] + d[i+1] + d[i+2]) / 3;
+    lum += cur[j];
     if (_motPrev) sum += Math.abs(cur[j] - _motPrev[j]);
   }
+  _motLum = lum / 768;
   const diff = _motPrev ? sum / 768 : 255;
   _motPrev = cur;
   return diff;
@@ -1190,6 +1255,15 @@ async function toggleLive(analyze = true) {
       fc = mkCanvas(cam.videoWidth, cam.videoHeight);
     fc.getContext('2d').drawImage(cam, 0, 0);
     const skipped = motGate(_motVal = frameDiff(fc)); // 정지 화면이면 검출 생략(직전 박스 재사용 — 결과 동일)
+    // 블랙아웃 워치독: iOS가 재협상·셔터 복귀 후 스트림을 검게 방치하는 잔존 경로(07-25 현장 재발) —
+    // 평균 밝기<5가 8프레임(~4초) 지속되면 회전 수술과 동일한 재획득으로 자가 복구(세션 누적 유지)
+    if (_motLum < 5 && !scanning) {
+      if (++_blackN >= 8) {
+        _blackN = 0; _rotRestart = true;
+        document.getElementById('scan-title').textContent = '🌑 카메라 화면이 검게 멈춰 다시 연결해요…';
+        await toggleLive(false); toggleLive(); break;
+      }
+    } else _blackN = 0;
     let rows;
     if (skipped) rows = _motRows;
     else try { rows = _motRows = await detect(fc, 960); }
@@ -1240,7 +1314,8 @@ async function toggleLive(analyze = true) {
         }
         const hrows = hi === fc ? rows : await detect(hi, 1280);
         const okRec = await recognizeAll(hi, hrows, m => { readMsg = `📸 ${m} — 폰을 내려놔도 돼요`;
-          document.getElementById('scan-title').textContent = readMsg; });
+          document.getElementById('scan-title').textContent = readMsg;
+          stillMsg(`${m} — 폰을 내려놔도 돼요`); });     // 오버레이에도 진행 상황 (줄 n/m)
         if (okRec && live && gen === liveGen) {
           let nNew = 0;                              // 프레임 투표 합산: 세션에 누적 (덮어쓰기 금지)
           for (const r of hrows) if (r.call) {
@@ -1256,11 +1331,8 @@ async function toggleLive(analyze = true) {
           snapReport(hi, hrows);                     // 리포트 재료: 원샷/프레임 복사 저장
           const nMis = [...sessionBooks.values()].filter(b => b.mis && !b.resolved).length;
           const tgt = findTarget && hrows.find(r => r.call === findTarget.call);
-          if (tgt) {                                 // 도서찾기 대상 발견 — 📍핀은 카메라 표시 좌표로 환산
-            const ps = cam.videoWidth / dims(hi).W;
-            liveFound = { box: tgt.box.map(v => v * ps), until: Date.now() + 10000 };
-            readMsg = `📍 찾는 책이 여기 있어요! — ${(findTarget.title || findTarget.call).slice(0, 14)}`;
-            setTimeout(() => readMsg = '', 10000);
+          if (tgt) {                                 // 도서찾기 대상 발견 — 찍힌 사진 위에 핀 찍고 정지
+            foundStop(hrows);
           } else {
             readMsg = `누적 ${sessionBooks.size}권 확인 (+${nNew})${nMis ? ` · ${nMis}권 의심` : ''}`
               + ' — 계속 비추거나 옆 칸으로';
