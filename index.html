@@ -348,7 +348,7 @@ sheet.addEventListener('touchend', e => { if (ty0 === null) return;
 // v1.3 이중인식 기본화(07-28 공식 승인 — 현장 검증: 시집 서가 회수 3/3 정답·오탐 0).
 // 비상 스위치 #nodual = v1.2 동작으로 즉시 롤백 (재배포 불필요)
 const _dualOn = !location.hash.includes('nodual');
-const APP_VER = _dualOn ? 'v1.3' : 'v1.2', APP_UPDATED = '2026-07-28 20:10';
+const APP_VER = _dualOn ? 'v1.3' : 'v1.2', APP_UPDATED = '2026-07-28 20:50';
 document.getElementById('app-ver').textContent = `${APP_VER} · ${APP_UPDATED} 업데이트`;
 document.title = `LibAR ${APP_VER} — 서가 스캔`;
 
@@ -1420,7 +1420,9 @@ async function toggleLive(analyze = true) {
           snapReport(hi, hrows);                     // 리포트 재료: 원샷/프레임 복사 저장
           const nMis = [...sessionBooks.values()].filter(b => b.mis && !b.resolved).length;
           const tgt = findTarget && hrows.find(r => r.call === findTarget.call);
-          const discN = !tgt && discMode ? hrows.filter(r => r.call && (_disc[discMode] || new Map()).has(r.call)).length : 0;
+          // 탐색 정지는 목록 모드(구체 대상 없음)에서만 — 특정 책 찾기(findTarget) 중엔 찾기 렌더가
+          // 우선이라 앰버 핀이 안 그려져 "핀을 탭해보세요" 문구와 모순되고, 찾는 사람에겐 방해다
+          const discN = !findTarget && discMode ? hrows.filter(r => r.call && (_disc[discMode] || new Map()).has(r.call)).length : 0;
           if (tgt) {                                 // 도서찾기 대상 발견 — 찍힌 사진 위에 핀 찍고 정지
             foundStop(hrows);
           } else if (discN) {                        // 탐색(추천·인기) 도서 발견 — 정지 화면에서 핀 탭 가능
