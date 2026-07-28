@@ -288,8 +288,8 @@ function show(v) { document.querySelectorAll('.view').forEach(e => e.classList.r
   document.getElementById('view-' + v).classList.add('active');
   if (v === 'dash') renderDash();
   if (v === 'home') { findTarget = null; setDiscMode(null); }        // 홈 복귀 = 찾기·탐색 해제
-  // 찾기 모드(이용자)의 스캔 화면엔 사서용 사진 점검 버튼을 숨긴다 (07-25 사용자 요청)
-  if (v === 'scan') document.getElementById('btn-photocheck').classList.toggle('hidden', !!findTarget); }
+  // 이용자 동선(찾기·탐색)의 스캔 화면엔 사서용 사진 점검 버튼을 숨긴다 (07-25 사용자 요청의 연장)
+  if (v === 'scan') document.getElementById('btn-photocheck').classList.toggle('hidden', !!(findTarget || discMode)); }
 
 // ── 사서 점검 현황 (manyfast n5 축약): 전부 실데이터 — 세션 요약 + 리포트 전송 시 기기 저장 ──
 function renderDash() {
@@ -348,7 +348,7 @@ sheet.addEventListener('touchend', e => { if (ty0 === null) return;
 // v1.3 이중인식 기본화(07-28 공식 승인 — 현장 검증: 시집 서가 회수 3/3 정답·오탐 0).
 // 비상 스위치 #nodual = v1.2 동작으로 즉시 롤백 (재배포 불필요)
 const _dualOn = !location.hash.includes('nodual');
-const APP_VER = _dualOn ? 'v1.3' : 'v1.2', APP_UPDATED = '2026-07-28 20:50';
+const APP_VER = _dualOn ? 'v1.3' : 'v1.2', APP_UPDATED = '2026-07-28 21:20';
 document.getElementById('app-ver').textContent = `${APP_VER} · ${APP_UPDATED} 업데이트`;
 document.title = `LibAR ${APP_VER} — 서가 스캔`;
 
@@ -1550,13 +1550,17 @@ async function findTab(kind) {
   if (search) { setDiscMode(null); renderFind(document.getElementById('find-q').value || ''); }
   else { await discData(kind); setDiscMode(kind); renderDiscList(kind); }
 }
+// A안(07-28 사용자 채택): 특정 책 지정 없이 목록만 켠 채 스캔 — 탐색 발견 정지(discStop)·전체 핀의
+// 유일한 진입점 (행 탭은 findTarget을 지정해 찾기 모드가 되므로, 이 버튼이 없으면 도달 불가 경로였음)
+function discScan() { findTarget = null; enterScan(); }
 function renderDiscList(kind) {
   const el = document.getElementById('find-list'); el.innerHTML = '';
   const cta = document.createElement('div');
   cta.className = 'p-3 text-xs font-semibold text-primary bg-primary/10';
-  cta.textContent = kind === 'pop'
-    ? '🔥 최근 1년 전국에서 많이 빌린 책 중 이 도서관 소장분이에요 — 서가 앞에서 스캔하면 핀이 떠요'
-    : '⭐ 국립중앙도서관 사서추천 중 이 도서관 소장분이에요 — 서가에서 스캔하면 핀과 추천사가 떠요';
+  cta.innerHTML = `<div class="mb-2">${kind === 'pop'
+    ? '🔥 최근 1년 전국에서 많이 빌린 책 중 이 도서관 소장분이에요'
+    : '⭐ 국립중앙도서관 사서추천 중 이 도서관 소장분이에요'}</div>
+    <button onclick="discScan()" class="w-full bg-primary text-on-primary rounded-lg py-2 text-sm font-bold">📷 서가에서 스캔 — 이 목록 전체에 핀</button>`;
   el.appendChild(cta);
   const secOf = c => { const m = /^(\d{3})/.exec(c); return m ? String(Math.floor(+m[1] / 100) * 100).padStart(3, '0') + '번대' : '기타'; };
   const items = [...(_disc[kind]?.values() || [])]
