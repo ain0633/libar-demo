@@ -348,7 +348,7 @@ sheet.addEventListener('touchend', e => { if (ty0 === null) return;
 // v1.3 이중인식 기본화(07-28 공식 승인 — 현장 검증: 시집 서가 회수 3/3 정답·오탐 0).
 // 비상 스위치 #nodual = v1.2 동작으로 즉시 롤백 (재배포 불필요)
 const _dualOn = !location.hash.includes('nodual');
-const APP_VER = _dualOn ? 'v1.3' : 'v1.2', APP_UPDATED = '2026-07-28 21:20';
+const APP_VER = _dualOn ? 'v1.3' : 'v1.2', APP_UPDATED = '2026-07-28 21:50';
 document.getElementById('app-ver').textContent = `${APP_VER} · ${APP_UPDATED} 업데이트`;
 document.title = `LibAR ${APP_VER} — 서가 스캔`;
 
@@ -764,13 +764,18 @@ function targetPin(ar, box, s, ox, oy, call) {
 }
 function showFindInfo() {                              // 찾는 책 서지 — 탐색 팝업 컨테이너 재사용
   if (!findTarget) return;
+  // 추천사·대출횟수 곁들임: openFind가 선로드한 동봉 JSON에서 청구기호로 조회 (미로드면 기본 서지만 — 07-28 요청)
+  const rec = _disc.rec?.get(findTarget.call), pop = _disc.pop?.get(findTarget.call);
+  const author = (rec || pop || {}).author;
   const p = document.getElementById('discPop');
   p.innerHTML = `
     <div class="flex justify-between items-start gap-2">
       <div class="text-xs font-bold text-primary">📍 찾는 책</div>
       <span class="material-symbols-outlined cursor-pointer text-on-surface-variant" onclick="hideDisc()">close</span></div>
-    <div class="font-bold text-sm">${findTarget.title || ''}</div>
-    <div class="font-mono-data text-xs text-on-surface-variant">${findTarget.call}${findTarget.sec ? ` · ${findTarget.sec} 서가` : ''}</div>`;
+    <div class="font-bold text-sm">${findTarget.title || (rec || pop || {}).title || ''}</div>
+    <div class="font-mono-data text-xs text-on-surface-variant">${author ? `${author} · ` : ''}${findTarget.call}${findTarget.sec ? ` · ${findTarget.sec} 서가` : ''}</div>
+    ${pop ? `<div class="text-xs text-on-surface-variant">🔥 최근 1년 전국 ${Number(pop.loan || 0).toLocaleString()}회 대출 (정보나루)</div>` : ''}
+    ${rec?.note ? `<div class="text-xs leading-relaxed max-h-36 overflow-y-auto text-on-surface-variant">⭐ 사서추천 — ${rec.note}</div>` : ''}`;
   p.style.display = 'block';
 }
 // ── 도서찾기 후보 추정: 직독 완전일치(정밀도 98% 실측) → 없으면 확정 이웃 사이 '틈'의
@@ -1513,6 +1518,7 @@ addEventListener('resize', () => {
 // ── 도서 찾기: 최근 스캔(데모 2장)에서 위치 확인된 책 검색 → 서가에서 하이라이트 ──
 let findIdx = null;
 async function openFind() {
+  discData('rec'); discData('pop');                     // 선로드(대기 안 함) — 찾기 핀 팝업의 추천사·대출횟수 곁들임용 (07-28)
   if (!findIdx) {
     try {
       // 위치 확인된 책 (스캔 실측) — call → 사진·박스
@@ -1694,6 +1700,7 @@ function guideSection(b) {
   document.getElementById('g-sec').textContent = `${b.sec} 서가로 가세요`;
   drawFloor(fl, room.replace(/^B?\d층\s*/, ''));         // 해당 층 표시 — 배치도 미확보면 '준비 중' (다른 층 대체 표시 안 함)
   findTarget = { call: b.call, title: b.title, sec: b.sec };   // 서가 스캔에서 이 책을 찾으면 📍 강조 (sec = 핀 서지 팝업용)
+  setDiscMode(null);                                     // 한 권 찾기 ↔ 목록 전체 핀은 배타 — 추천/인기 표시 배너 잔존 방지 (07-28 현장)
   show('guide');
 }
 document.getElementById('find-q').oninput = e => { if (findIdx) renderFind(e.target.value); };
