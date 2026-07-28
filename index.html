@@ -348,7 +348,7 @@ sheet.addEventListener('touchend', e => { if (ty0 === null) return;
 // v1.3 이중인식 기본화(07-28 공식 승인 — 현장 검증: 시집 서가 회수 3/3 정답·오탐 0).
 // 비상 스위치 #nodual = v1.2 동작으로 즉시 롤백 (재배포 불필요)
 const _dualOn = !location.hash.includes('nodual');
-const APP_VER = _dualOn ? 'v1.3' : 'v1.2', APP_UPDATED = '2026-07-28 19:00';
+const APP_VER = _dualOn ? 'v1.3' : 'v1.2', APP_UPDATED = '2026-07-28 19:40';
 document.getElementById('app-ver').textContent = `${APP_VER} · ${APP_UPDATED} 업데이트`;
 document.title = `LibAR ${APP_VER} — 서가 스캔`;
 
@@ -832,9 +832,10 @@ function drawBoxes(img, rows) {
     for (const r of rows) if (r.call && m.has(r.call)) discPin(ar, r, s, ox, oy, m.get(r.call));
   }
 }
-// 도서찾기 발견 시 라이브 정지: 라이브 화면 위 핀은 폰을 내리는 순간 엉뚱한 곳(바닥)을 가리킨다 —
-// (07-25 현장 피드백). 찍힌 사진은 좌표가 불변이라 그 위에 핀을 그리고 멈춘다. 재개 = ▶ 버튼(일시정지와 동일)
-function foundStop(hrows) {
+// 발견 시 라이브 정지(도서찾기·이용자 탐색 공용): 라이브 화면 위 핀은 폰을 내리는 순간 엉뚱한 곳을
+// 가리키고(07-25), 라이브 박스엔 식별이 없어 탭할 핀 자체가 없다(07-28 "팝업 안 뜸") —
+// 찍힌 사진은 좌표가 불변이고 판독 완료 상태라, 그 위에 핀을 그리고 멈춘다. 재개 = ▶ 버튼
+function stopOnStill(hrows, msg) {
   live = false; liveGen++;
   if (stream) stream.getTracks().forEach(t => t.stop());
   document.getElementById('btn-live').textContent = '▶ 재개';
@@ -843,9 +844,14 @@ function foundStop(hrows) {
   // 정지 사진을 최신 렌더 상태로 등록 — iOS는 주소창 개폐만으로 resize를 발사하고, resize 핸들러가
   // lastImg(이전 사진 스캔)의 낡은 rows로 #ar를 다시 그려 핀을 지웠다(멘트만 남는 간헐 증상, 07-25 현장)
   lastImg = photo; lastRows = hrows; lastLocate = null;
-  drawBoxes(photo, hrows);                                       // live=false + findTarget → 핀만 렌더
-  document.getElementById('scan-title').textContent =
-    `📍 찾는 책이 여기 있어요! — ${(findTarget.title || findTarget.call).slice(0, 14)} (사진 속 위치예요)`;
+  drawBoxes(photo, hrows);        // live=false → 찾기면 📍핀만, 탐색이면 박스+앰버 핀(탭=서지 팝업)
+  document.getElementById('scan-title').textContent = msg;
+}
+function foundStop(hrows) {
+  stopOnStill(hrows, `📍 찾는 책이 여기 있어요! — ${(findTarget.title || findTarget.call).slice(0, 14)} (사진 속 위치예요)`);
+}
+function discStop(hrows, n) {
+  stopOnStill(hrows, `${discMode === 'pop' ? '🔥 인기대출' : '⭐ 사서추천'} ${n}권 발견 — 핀을 탭해보세요 · 계속은 ▶ 재개`);
 }
 
 // ── 이용자 탐색: 서가 화면 위에 도서관 데이터를 겹쳐 보인다 — 정적 동봉 데이터(월 1회 오프라인 갱신,
@@ -1401,8 +1407,11 @@ async function toggleLive(analyze = true) {
           snapReport(hi, hrows);                     // 리포트 재료: 원샷/프레임 복사 저장
           const nMis = [...sessionBooks.values()].filter(b => b.mis && !b.resolved).length;
           const tgt = findTarget && hrows.find(r => r.call === findTarget.call);
+          const discN = !tgt && discMode ? hrows.filter(r => r.call && (_disc[discMode] || new Map()).has(r.call)).length : 0;
           if (tgt) {                                 // 도서찾기 대상 발견 — 찍힌 사진 위에 핀 찍고 정지
             foundStop(hrows);
+          } else if (discN) {                        // 탐색(추천·인기) 도서 발견 — 정지 화면에서 핀 탭 가능
+            discStop(hrows, discN);
           } else {
             readMsg = `누적 ${sessionBooks.size}권 확인 (+${nNew})${nMis ? ` · ${nMis}권 의심` : ''}`
               + ' — 계속 비추거나 옆 칸으로';
