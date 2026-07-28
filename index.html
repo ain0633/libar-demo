@@ -345,10 +345,10 @@ sheet.addEventListener('touchend', e => { if (ty0 === null) return;
   if (dy < -40) setSheet(true); else if (dy > 40) setSheet(false); });
 
 // ── 버전 표기(사용자 요청): 배포할 때마다 아래 두 값만 갱신 — 홈 하단 개발자 정보·브라우저 탭에 표시 ──
-// #dual 해시 = v1.3 이중인식 옵트인(얇은 책 제목 회수). 기본 주소는 v1.2 그대로 —
-// 발열·오탐이 심하면 해시 없는 주소로 접속하는 것이 곧 롤백 (재배포 불필요)
-const _dualOn = location.hash.includes('dual');
-const APP_VER = _dualOn ? 'v1.3' : 'v1.2', APP_UPDATED = '2026-07-28 18:25';
+// v1.3 이중인식 기본화(07-28 공식 승인 — 현장 검증: 시집 서가 회수 3/3 정답·오탐 0).
+// 비상 스위치 #nodual = v1.2 동작으로 즉시 롤백 (재배포 불필요)
+const _dualOn = !location.hash.includes('nodual');
+const APP_VER = _dualOn ? 'v1.3' : 'v1.2', APP_UPDATED = '2026-07-28 19:00';
 document.getElementById('app-ver').textContent = `${APP_VER} · ${APP_UPDATED} 업데이트`;
 document.title = `LibAR ${APP_VER} — 서가 스캔`;
 
