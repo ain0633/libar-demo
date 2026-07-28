@@ -348,7 +348,7 @@ sheet.addEventListener('touchend', e => { if (ty0 === null) return;
 // #dual 해시 = v1.3 이중인식 옵트인(얇은 책 제목 회수). 기본 주소는 v1.2 그대로 —
 // 발열·오탐이 심하면 해시 없는 주소로 접속하는 것이 곧 롤백 (재배포 불필요)
 const _dualOn = location.hash.includes('dual');
-const APP_VER = _dualOn ? 'v1.3' : 'v1.2', APP_UPDATED = '2026-07-28 17:30';
+const APP_VER = _dualOn ? 'v1.3' : 'v1.2', APP_UPDATED = '2026-07-28 18:25';
 document.getElementById('app-ver').textContent = `${APP_VER} · ${APP_UPDATED} 업데이트`;
 document.title = `LibAR ${APP_VER} — 서가 스캔`;
 
@@ -819,6 +819,7 @@ function drawBoxes(img, rows) {
     if (r.mis) { d.style.border = '2px solid rgba(255,107,100,.95)'; d.style.background = 'rgba(255,107,100,.18)';
                  d.style.cursor = 'pointer'; d.style.pointerEvents = 'auto';   // 탭 → 왜 오배열인지 근거
                  d.onclick = () => showReason(r, rows); }
+    else if (r.how === '제목') { d.style.border = '2px solid rgba(56,189,248,.9)'; d.style.background = 'rgba(56,189,248,.14)'; }  // v1.3 제목 회수 = 하늘색 (직독 초록과 구분 — 현장 검증용)
     else if (r.call || r.live) { d.style.border = '2px solid rgba(75,226,119,.85)'; d.style.background = 'rgba(75,226,119,.12)'; }
     else { d.style.border = '1px solid rgba(134,149,133,.55)'; d.style.background = 'rgba(45,52,73,.22)'; }
     ar.appendChild(d);
@@ -1069,10 +1070,11 @@ function fillSheet(img, rows) {
   };
   const lo = document.getElementById('list-ok'); lo.innerHTML = '';
   for (const r of ok) {
+    const dual = r.how === '제목';                      // v1.3 제목 회수 — 하늘색 뱃지로 직독과 구분
     lo.insertAdjacentHTML('beforeend',
-      `<div class="flex items-center gap-2 bg-surface-container border border-outline-variant rounded-lg p-2">
+      `<div class="flex items-center gap-2 bg-surface-container border ${dual ? 'border-sky-400/60' : 'border-outline-variant'} rounded-lg p-2">
         <img src="${tsrc(img, r, 48)}" class="w-8 rounded">
-        <div class="min-w-0"><div class="font-mono-data text-[11px] font-semibold truncate">${r.call}</div>
+        <div class="min-w-0"><div class="font-mono-data text-[11px] font-semibold truncate">${r.call}${dual ? ' <span class="text-sky-400">📖제목</span>' : ''}</div>
         <div class="text-[10px] text-on-surface-variant truncate">${r.title || ''}</div></div></div>`);
   }
   const lg = document.getElementById('list-gray'); lg.innerHTML = '';
