@@ -345,7 +345,10 @@ sheet.addEventListener('touchend', e => { if (ty0 === null) return;
   if (dy < -40) setSheet(true); else if (dy > 40) setSheet(false); });
 
 // ── 버전 표기(사용자 요청): 배포할 때마다 아래 두 값만 갱신 — 홈 하단 개발자 정보·브라우저 탭에 표시 ──
-const APP_VER = 'v1.2', APP_UPDATED = '2026-07-25 17:05';
+// #dual 해시 = v1.3 이중인식 옵트인(얇은 책 제목 회수). 기본 주소는 v1.2 그대로 —
+// 발열·오탐이 심하면 해시 없는 주소로 접속하는 것이 곧 롤백 (재배포 불필요)
+const _dualOn = location.hash.includes('dual');
+const APP_VER = _dualOn ? 'v1.3' : 'v1.2', APP_UPDATED = '2026-07-28 17:30';
 document.getElementById('app-ver').textContent = `${APP_VER} · ${APP_UPDATED} 업데이트`;
 document.title = `LibAR ${APP_VER} — 서가 스캔`;
 
@@ -578,6 +581,70 @@ async function titleArbitrate(img, rows) {
   _titleMs = Math.round(performance.now() - t0);
 }
 
+// ── 이중인식(v1.3, #dual 옵트인): 1차 라벨 직독이 실패한 박스만 책등 제목으로 회수 ──
+// 얇은 책(시집) 대응 — 라벨 뒷글자가 옆면으로 말려 잘리는 물리 한계의 보충 증언 (07-28 광수쌤 현장).
+// 후보군 = 같은 줄 직독(≥0.95) 책들의 분류 집합 + 부분 판독 저자 접두로 추가 축소 — 전 장서 스캔 금지(오탐 억제).
+// 확정 잣대는 위험군 제목 대조와 동일(0.4+·2위 격차 0.12, 후보 1권뿐이면 0.45+).
+// 발열 제어: 정지 판독 한정(라이브 자동판독 제외) + 상한 20권 + 회전 방향 다수결(첫 3권 양방향→이후 단방향).
+// how='제목' → 오배열 경보·LIS 판정열 둘 다 불참 (경보는 직독만 원칙, 제목 오인이 이웃 판정 못 흔들게)
+let _dualN = 0, _dualHit = 0, _dualMs = 0;
+async function dualRecover(img, rows, onMsg) {
+  const t0 = performance.now();
+  _dualN = 0; _dualHit = 0;
+  const used = new Set(rows.filter(r => r.call).map(r => r.call));
+  const todo = rows.filter(r => !r.call && r.box && r.box[2] - r.box[0] >= 8)
+                   .sort((a, b) => a.band - b.band || a.box[0] - b.box[0]).slice(0, 20);
+  const vote = { 1: 0, [-1]: 0 };
+  let locked = null;
+  for (const r of todo) {
+    const clss = new Set(rows.filter(x => x.band === r.band && x.call && x.score >= 0.95 && x.how === '청구기호')
+                             .map(x => x.call.split('-')[0].trim()));
+    if (!clss.size) continue;                          // 같은 줄에 직독 앵커가 없으면 문맥 부족 — 보류 유지
+    let cands = [];
+    for (const c of clss) cands.push(...(recIdx.byCls[c] || []));
+    const am = String(r.read || '').match(/[가-힣][0-9]{2,3}/);   // 부분 판독 저자 접두(예: 나883)로 축소
+    if (am) {
+      const narrowed = cands.filter(c => c.author.startsWith(am[0]));
+      if (narrowed.length) cands = narrowed;
+    }
+    cands = cands.filter(c => !used.has(c.call));
+    if (!cands.length || cands.length > 800) continue; // 후보 0 또는 문맥이 못 좁힌 거대 풀 — 지레짐작 금지
+    const [x0, y0, x1] = r.box, bh = r.box[3] - r.box[1], bw = x1 - x0;
+    const ty0 = Math.max(0, y0 - bh * 5), th = y0 - ty0;
+    if (th < bh) continue;                             // 제목 영역이 프레임 밖
+    const crop = mkCanvas(Math.round(bw), Math.round(th));
+    crop.getContext('2d').drawImage(img, Math.round(x0), Math.round(ty0), Math.round(bw), Math.round(th),
+                                    0, 0, crop.width, crop.height);
+    _dualN++;
+    onMsg?.(`얇은 책 제목 확인 중… ${_dualN}/${todo.length}`);
+    const scores = new Map();
+    const dirs = locked ? [locked] : [1, -1];          // 방향 다수결: 첫 3권 양방향 → 이후 단방향(비용 반감)
+    for (const dir of dirs) {
+      const rot = mkCanvas(crop.height, crop.width);
+      const cx = rot.getContext('2d');
+      cx.translate(rot.width / 2, rot.height / 2); cx.rotate(dir * Math.PI / 2);
+      cx.drawImage(crop, -crop.width / 2, -crop.height / 2);
+      let txt = '';
+      try { txt = (await detRecPiece(rot)).map(t => t.t).join(' '); } catch (e) { continue; }
+      if (txt.length < 2) continue;
+      vote[dir] += txt.length;
+      for (const cand of cands) {
+        const s = titleSim(txt, cand.title || '');
+        if (s > (scores.get(cand.call) || 0)) scores.set(cand.call, s);
+      }
+    }
+    if (!locked && _dualN >= 3) locked = vote[1] >= vote[-1] ? 1 : -1;
+    const ranked = [...scores.entries()].sort((p, q) => q[1] - p[1]);
+    const ok = ranked.length >= 2 ? ranked[0][1] >= 0.4 && ranked[0][1] - ranked[1][1] >= 0.12
+                                  : ranked.length === 1 && ranked[0][1] >= 0.45;
+    if (ok) {
+      r.call = ranked[0][0]; r.title = _titleByCall.get(ranked[0][0]) || '';
+      r.how = '제목'; r.score = +ranked[0][1].toFixed(2);
+      used.add(r.call); _dualHit++;
+    }
+  }
+  _dualMs = Math.round(performance.now() - t0);
+}
 async function recognizeAll(img, rows, onMsg) {
   if (!await ensureRec(onMsg)) return false;
   const { W, H } = dims(img);
@@ -599,6 +666,7 @@ async function recognizeAll(img, rows, onMsg) {
   rows.push(...extras);                                // 클러스터 채널 회수 라벨
   rowContextGate(rows);
   if (!_risk) _risk = buildRiskGroups(await loadCatalogRaw());
+  if (_dualOn && !live && !findTarget) await dualRecover(img, rows, onMsg);   // v1.3 이중인식 — 정지 판독만
   await titleArbitrate(img, rows);                     // 위험군 한정 선별 제목 대조 (~2% 책만 발동)
   lastRecMs = performance.now() - t0;
   judgeRows(rows);

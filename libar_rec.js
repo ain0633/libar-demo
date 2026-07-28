@@ -202,11 +202,13 @@ function bandCluster(rows) {
 }
 
 // ── 행별 LIS 판정: 플래그는 직독(청구기호)만 ──
+// 제목 회수(how='제목', v1.3 이중인식) 책은 판정열 자체에서 제외 — 퍼지 매칭 오인이
+// LIS를 흔들어 이웃 직독 책을 억울하게 플래그하는 것을 차단 (파이프라인 rows엔 how 없음 = 무영향)
 function flagMisplaced(rows) {
   let nMis = 0;
   const bands = new Set(rows.map(r => r.band));
   for (const b of bands) {
-    const seq = rows.filter(r => r.band === b && r.call)
+    const seq = rows.filter(r => r.band === b && r.call && r.how !== '제목')
                     .sort((x, y) => x.box[0] - y.box[0]);
     const mis = lisMisplaced(seq.map(r => sortkey(r.call)));
     seq.forEach((r, j) => {
