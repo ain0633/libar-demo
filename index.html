@@ -348,7 +348,7 @@ sheet.addEventListener('touchend', e => { if (ty0 === null) return;
 // v1.3 이중인식 기본화(07-28 공식 승인 — 현장 검증: 시집 서가 회수 3/3 정답·오탐 0).
 // 비상 스위치 #nodual = v1.2 동작으로 즉시 롤백 (재배포 불필요)
 const _dualOn = !location.hash.includes('nodual');
-const APP_VER = _dualOn ? 'v1.3' : 'v1.2', APP_UPDATED = '2026-07-28 19:40';
+const APP_VER = _dualOn ? 'v1.3' : 'v1.2', APP_UPDATED = '2026-07-28 20:10';
 document.getElementById('app-ver').textContent = `${APP_VER} · ${APP_UPDATED} 업데이트`;
 document.title = `LibAR ${APP_VER} — 서가 스캔`;
 
@@ -753,12 +753,25 @@ function targetPin(ar, box, s, ox, oy, call) {
   const [x0, y0, x1, y1] = box;
   const hl = document.createElement('div');
   hl.style.cssText = `position:absolute;left:${x0*s+ox}px;top:${y0*s+oy}px;width:${(x1-x0)*s}px;height:${(y1-y0)*s}px;
-    border:3px solid #4be277;border-radius:3px;box-shadow:0 0 0 6px rgba(75,226,119,.25), 0 0 30px rgba(75,226,119,.5);animation:pulse-glow 1.5s infinite`;
+    border:3px solid #4be277;border-radius:3px;box-shadow:0 0 0 6px rgba(75,226,119,.25), 0 0 30px rgba(75,226,119,.5);animation:pulse-glow 1.5s infinite;
+    pointer-events:auto;cursor:pointer`;
   const pin = document.createElement('div');
   pin.textContent = '📍 ' + call;
   pin.style.cssText = 'position:absolute;top:-34px;left:50%;transform:translateX(-50%);white-space:nowrap;background:#22c55e;color:#003915;font:700 12px Geist;padding:4px 8px;border-radius:8px';
   hl.appendChild(pin);
+  hl.onclick = showFindInfo;                           // 찾기 핀 탭 → 서지 팝업 (탐색 핀과 동일 경험, 07-28)
   ar.appendChild(hl);
+}
+function showFindInfo() {                              // 찾는 책 서지 — 탐색 팝업 컨테이너 재사용
+  if (!findTarget) return;
+  const p = document.getElementById('discPop');
+  p.innerHTML = `
+    <div class="flex justify-between items-start gap-2">
+      <div class="text-xs font-bold text-primary">📍 찾는 책</div>
+      <span class="material-symbols-outlined cursor-pointer text-on-surface-variant" onclick="hideDisc()">close</span></div>
+    <div class="font-bold text-sm">${findTarget.title || ''}</div>
+    <div class="font-mono-data text-xs text-on-surface-variant">${findTarget.call}${findTarget.sec ? ` · ${findTarget.sec} 서가` : ''}</div>`;
+  p.style.display = 'block';
 }
 // ── 도서찾기 후보 추정: 직독 완전일치(정밀도 98% 실측) → 없으면 확정 이웃 사이 '틈'의
 //    미판독 박스를 후보로 (순서 추론 — 유일 후보 LOO 정밀도 100% 실측이라 1권=95%, K권=90/K%) ──
@@ -1674,7 +1687,7 @@ function guideSection(b) {
   document.getElementById('g-floorchip').textContent = room;
   document.getElementById('g-sec').textContent = `${b.sec} 서가로 가세요`;
   drawFloor(fl, room.replace(/^B?\d층\s*/, ''));         // 해당 층 표시 — 배치도 미확보면 '준비 중' (다른 층 대체 표시 안 함)
-  findTarget = { call: b.call, title: b.title };         // 서가 스캔에서 이 책을 찾으면 📍 강조
+  findTarget = { call: b.call, title: b.title, sec: b.sec };   // 서가 스캔에서 이 책을 찾으면 📍 강조 (sec = 핀 서지 팝업용)
   show('guide');
 }
 document.getElementById('find-q').oninput = e => { if (findIdx) renderFind(e.target.value); };
